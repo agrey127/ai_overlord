@@ -1,0 +1,48 @@
+| table_schema | table_name                             | table_type |
+| ------------ | -------------------------------------- | ---------- |
+| public       | fitness_daily                          | BASE TABLE |
+| public       | life_signals                           | BASE TABLE |
+| public       | simplefin_accounts                     | BASE TABLE |
+| public       | simplefin_connections                  | BASE TABLE |
+| public       | simplefin_transactions                 | BASE TABLE |
+| public       | v_cashflow_projection_7d               | VIEW       |
+| public       | v_daily_calories_protein               | VIEW       |
+| public       | v_fitness_daily                        | VIEW       |
+| public       | v_fitness_daily_last_7                 | VIEW       |
+| public       | v_jellyfin_daily                       | VIEW       |
+| public       | v_jellyfin_daily_by_type               | VIEW       |
+| public       | v_jellyfin_monthly                     | VIEW       |
+| public       | v_jellyfin_recent_library_items        | VIEW       |
+| public       | v_jellyfin_sessions                    | VIEW       |
+| public       | v_jellyfin_weekly                      | VIEW       |
+| public       | v_meal_logs_normalized                 | VIEW       |
+| public       | v_meal_logs_read                       | VIEW       |
+| public       | v_monthly_activities                   | VIEW       |
+| public       | v_monthly_checking_cashflow            | VIEW       |
+| public       | v_monthly_checking_income              | VIEW       |
+| public       | v_monthly_checking_net_cashflow        | VIEW       |
+| public       | v_monthly_checking_spending            | VIEW       |
+| public       | v_monthly_fitness_daily                | VIEW       |
+| public       | v_monthly_fitness_summary              | VIEW       |
+| public       | v_nutrition_daily_rollup               | VIEW       |
+| public       | v_nutrition_monthly_rollup             | VIEW       |
+| public       | v_nutrition_rolling_7d                 | VIEW       |
+| public       | v_nutrition_week_over_week             | VIEW       |
+| public       | v_nutrition_weekly_goal_attainment     | VIEW       |
+| public       | v_nutrition_weekly_rollup              | VIEW       |
+| public       | v_relationship_status                  | VIEW       |
+| public       | v_saved_meals_home                     | VIEW       |
+| public       | v_today_nutrition_home                 | VIEW       |
+| public       | v_weekly_activities                    | VIEW       |
+| public       | v_weekly_activities_by_type            | VIEW       |
+| public       | v_weekly_activities_deltas             | VIEW       |
+| public       | v_weekly_checking_cashflow             | VIEW       |
+| public       | v_weekly_checking_income               | VIEW       |
+| public       | v_weekly_checking_net_cashflow         | VIEW       |
+| public       | v_weekly_checking_spending             | VIEW       |
+| public       | v_weekly_fitness_daily                 | VIEW       |
+| public       | v_weekly_fitness_daily_deltas          | VIEW       |
+| public       | v_weekly_fitness_summary               | VIEW       |
+| public       | v_weekly_fitness_summary_deltas        | VIEW       |
+| public       | v_weekly_fitness_summary_deltas_filled | VIEW       |
+| public       | v_yesterday_nutrition_home             | VIEW       |
