@@ -10,6 +10,10 @@ export default function MorePage() {
         <li>
           <Link href="/baseline/more/relationships">Relationships</Link>
         </li>
+
+        <li>
+          <Link href="/baseline/signals">Life Signals</Link>
+        </li>
       </ul>
     </main>
   );
