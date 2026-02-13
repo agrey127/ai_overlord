@@ -23,6 +23,77 @@ function fmtMoney(n: number | null | undefined) {
   return Number(n).toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
+function lerpColor(c1: [number, number, number], c2: [number, number, number], t: number) {
+  return [
+    Math.round(lerp(c1[0], c2[0], t)),
+    Math.round(lerp(c1[1], c2[1], t)),
+    Math.round(lerp(c1[2], c2[2], t)),
+  ] as [number, number, number];
+}
+
+/**
+ * Severity is 0..5
+ * 0 -> purple
+ * 3 -> amber
+ * 5 -> red
+ */
+function severityRgb(sev: number | string | null | undefined) {
+  const s = clamp(Number(sev ?? 0), 0, 5);
+
+  const purple: [number, number, number] = [168, 85, 247];
+  const amber: [number, number, number] = [245, 158, 11];
+  const red: [number, number, number] = [239, 68, 68];
+
+  if (s <= 3) {
+    return lerpColor(purple, amber, s / 3);
+  }
+  return lerpColor(amber, red, (s - 3) / 2);
+}
+
+function severityAura(sev: number | string | null | undefined) {
+  const s = clamp(Number(sev ?? 0), 0, 5);
+  const [r, g, b] = severityRgb(s);
+
+  // More punch in 4-5 range
+  const a = lerp(0.10, 0.26, s / 5);
+
+  return `radial-gradient(700px 260px at 10% 0%, rgba(${r}, ${g}, ${b}, ${a}), transparent 65%)`;
+}
+
+function severityBorder(sev: number | string | null | undefined) {
+  const s = clamp(Number(sev ?? 0), 0, 5);
+  const [r, g, b] = severityRgb(s);
+
+  const a = lerp(0.16, 0.34, s / 5);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+function severityDot(sev: number | string | null | undefined) {
+  const s = clamp(Number(sev ?? 0), 0, 5);
+  const [r, g, b] = severityRgb(s);
+
+  const a = lerp(0.55, 0.98, s / 5);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+function severityHalo(sev: number | string | null | undefined) {
+  const s = clamp(Number(sev ?? 0), 0, 5);
+  const [r, g, b] = severityRgb(s);
+
+  const a = lerp(0.08, 0.18, s / 5);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+
+
 function severityDotColor(sev: number | null | undefined) {
   const s = typeof sev === "number" ? sev : 0;
   if (s >= 8) return "var(--crit)";
@@ -126,23 +197,73 @@ export default async function BaselineHomePage() {
             </div>
           </div>
 
+          
           {/* Cashflow */}
           <div className="card">
             <div className="card-inner">
               <div className="card-title">Cashflow</div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <div className="card-muted" style={{ fontSize: 13 }}>Current</div>
-                  <div style={{ fontSize: 16, fontWeight: 700 }}>{fmtMoney(currentBal)}</div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    alignItems: "baseline",
+                    minWidth: 0,
+                  }}
+                >
+                  <div className="card-muted" style={{ fontSize: 13, flexShrink: 0 }}>
+                    Current
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 700,
+                      minWidth: 0,
+                      textAlign: "right",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                    title={fmtMoney(currentBal)}
+                  >
+                    {fmtMoney(currentBal)}
+                  </div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <div className="card-muted" style={{ fontSize: 13 }}>Projected (7d)</div>
-                  <div style={{ fontSize: 16, fontWeight: 700 }}>{fmtMoney(projectedBal)}</div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    alignItems: "baseline",
+                    minWidth: 0,
+                  }}
+                >
+                  <div className="card-muted" style={{ fontSize: 13, flexShrink: 0 }}>
+                    Projected (7d)
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 700,
+                      minWidth: 0,
+                      textAlign: "right",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                    title={fmtMoney(projectedBal)}
+                  >
+                    {fmtMoney(projectedBal)}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+
+
         </div>
       </section>
 
@@ -208,19 +329,49 @@ export default async function BaselineHomePage() {
         ) : (
           <div style={{ display: "grid", gap: 10 }}>
             {signals.slice(0, 4).map((s) => (
-              <div key={s.id} className="card">
-                <div className="card-inner">
+              <div
+                key={s.id}
+                className="card"
+                style={{
+                  position: "relative",
+                  overflow: "hidden",
+                  borderColor: severityBorder(s.severity),
+                }}
+              >
+                <div
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    inset: -1,
+                    background: severityAura(s.severity),
+                    pointerEvents: "none",
+                  }}
+                />
+                <div className="card-inner" style={{ position: "relative" }}>
+                  ...
+
+                  {/* existing content unchanged */}
+
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
                     <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                      <div
-                        style={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: 999,
-                          background: severityDotColor(s.severity),
-                          boxShadow: `0 0 0 4px rgba(255,255,255,0.02)`,
-                        }}
-                      />
+                      {(() => {
+                        const [r, g, b] = severityRgb(s.severity);
+                        const sev = clamp(Number(s.severity ?? 0), 0, 10);
+                        const dotA = lerp(0.55, 0.95, sev / 10);
+
+                        return (
+                          <div
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: 999,
+                              background: `rgba(${r}, ${g}, ${b}, ${dotA})`,
+                              boxShadow: `0 0 0 4px rgba(${r}, ${g}, ${b}, 0.10)`,
+                            }}
+                          />
+                        );
+                      })()}
+
                       <div style={{ fontWeight: 700 }}>{s.title}</div>
                     </div>
 
@@ -269,6 +420,7 @@ export default async function BaselineHomePage() {
                   ) : null}
                 </div>
               </div>
+
             ))}
           </div>
         )}
