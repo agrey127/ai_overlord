@@ -202,69 +202,27 @@ export default async function BaselineHomePage() {
           <div className="card">
             <div className="card-inner">
               <div className="card-title">Cashflow</div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    alignItems: "baseline",
-                    minWidth: 0,
-                  }}
-                >
-                  <div className="card-muted" style={{ fontSize: 13, flexShrink: 0 }}>
-                    Current
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginTop: 10 }}>
+                <div className="cashflow-stack">
+                  <div className="cashflow-row">
+                    <div className="card-muted">Current</div>
+                    <div className="cashflow-amount" title={fmtMoney(currentBal)}>
+                      {fmtMoney(currentBal)}
+                    </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 700,
-                      minWidth: 0,
-                      textAlign: "right",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                    title={fmtMoney(currentBal)}
-                  >
-                    {fmtMoney(currentBal)}
+
+                  <div className="cashflow-row">
+                    <div className="card-muted">Projected (7d)</div>
+                    <div className="cashflow-amount" title={fmtMoney(projectedBal)}>
+                      {fmtMoney(projectedBal)}
+                    </div>
                   </div>
                 </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    alignItems: "baseline",
-                    minWidth: 0,
-                  }}
-                >
-                  <div className="card-muted" style={{ fontSize: 13, flexShrink: 0 }}>
-                    Projected (7d)
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 700,
-                      minWidth: 0,
-                      textAlign: "right",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                    title={fmtMoney(projectedBal)}
-                  >
-                    {fmtMoney(projectedBal)}
-                  </div>
-                </div>
-              </div>
+              </div>  
             </div>
           </div>
 
-
-        </div>
+        </div>  
       </section>
 
       {/* Primary Recommendation */}
