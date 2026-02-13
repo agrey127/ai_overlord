@@ -197,30 +197,44 @@ export default async function BaselineHomePage() {
             </div>
           </div>
 
-          
           {/* Cashflow */}
           <div className="card">
             <div className="card-inner">
               <div className="card-title">Cashflow</div>
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginTop: 10 }}>
-                <div className="cashflow-stack">
-                  <div className="cashflow-row">
-                    <div className="card-muted">Current</div>
-                    <div className="cashflow-amount" title={fmtMoney(currentBal)}>
-                      {fmtMoney(currentBal)}
-                    </div>
-                  </div>
 
-                  <div className="cashflow-row">
-                    <div className="card-muted">Projected (7d)</div>
-                    <div className="cashflow-amount" title={fmtMoney(projectedBal)}>
-                      {fmtMoney(projectedBal)}
-                    </div>
-                  </div>
+              {/* Top row */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "baseline",
+                  marginTop: 8,
+                  gap: 8,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 28,   // match protein exactly (adjust if needed)
+                    fontWeight: 750,
+                  }}
+                  title={fmtMoney(projectedBal)}
+                >
+                  {fmtMoney(projectedBal)}
                 </div>
-              </div>  
+
+                <div className="card-muted" style={{ fontSize: 13 }}>
+                  Projected (7d)
+                </div>
+              </div>
+
+              {/* Bottom row */}
+              <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
+                {fmtMoney(currentBal)} current
+              </div>
             </div>
           </div>
+
+
 
         </div>  
       </section>
