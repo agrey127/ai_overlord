@@ -7,21 +7,62 @@ import { submitManualLog } from "./actions";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
+
   return (
     <button
       type="submit"
       disabled={pending}
       style={{
         padding: "12px 16px",
-        borderRadius: 8,
-        border: "1px solid #333",
-        background: "white",
+        borderRadius: 12,
+        border: "1px solid rgba(168, 85, 247, 0.28)",
+        background:
+          "radial-gradient(180px 80px at 20% 0%, rgba(124, 58, 237, 0.55), rgba(124, 58, 237, 0.18))",
+        color: "rgba(255,255,255,0.92)",
+        fontWeight: 800,
         cursor: pending ? "not-allowed" : "pointer",
+        boxShadow: "0 14px 40px rgba(124, 58, 237, 0.18)",
+        transition: "transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease",
+        opacity: pending ? 0.7 : 1,
       }}
     >
       {pending ? "Saving…" : "Log meal"}
     </button>
   );
+}
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(18, 22, 32, 0.55)",
+  color: "rgba(255,255,255,0.92)",
+  outline: "none",
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  marginBottom: 6,
+  color: "rgba(255,255,255,0.62)",
+  fontSize: 13,
+};
+
+function mealTypeButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: "8px 10px",
+    borderRadius: 999,
+    border: active
+      ? "1px solid rgba(168, 85, 247, 0.28)"
+      : "1px solid rgba(255,255,255,0.10)",
+    background: active
+      ? "rgba(124, 58, 237, 0.16)"
+      : "rgba(255,255,255,0.03)",
+    color: active ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.78)",
+    cursor: "pointer",
+    fontSize: 13,
+    transition: "transform 160ms ease, background 160ms ease, border-color 160ms ease",
+  };
 }
 
 export function ManualLogForm() {
@@ -37,134 +78,136 @@ export function ManualLogForm() {
 
     await submitManualLog(formData);
 
-    // back to Declare (so you immediately see totals + saved meals)
     router.push("/baseline/declare");
     router.refresh();
   }
 
   return (
-    <form action={action} style={{ display: "grid", gap: 12 }}>
+    <form action={action} style={{ display: "grid", gap: 14 }}>
+      {/* Description */}
       <div>
-        <label style={{ display: "block", marginBottom: 6, color: "#666" }}>
-          Description
-        </label>
+        <label style={labelStyle}>Description</label>
         <input
           name="description"
           placeholder="e.g., Chipotle bowl, homemade pasta..."
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: 8,
-            border: "1px solid #bbb",
-          }}
+          style={inputStyle}
         />
       </div>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <span style={{ color: "#666" }}>Meal type:</span>
+      {/* Meal Type */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ color: "rgba(255,255,255,0.62)", fontSize: 13 }}>Meal type:</span>
         {(["breakfast", "lunch", "dinner", "snack"] as const).map((t) => (
           <button
             key={t}
             type="button"
             onClick={() => setMealType(t)}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 8,
-              border: "1px solid #bbb",
-              background: mealType === t ? "#eee" : "white",
-              cursor: "pointer",
-            }}
+            style={mealTypeButtonStyle(mealType === t)}
           >
             {t}
           </button>
         ))}
       </div>
 
-      <div style={{ display: "grid", gap: 10 }}>
-        <div>
-          <label style={{ display: "block", marginBottom: 6, color: "#666" }}>
-            Calories
-          </label>
-          <input
-            name="calories"
-            inputMode="decimal"
-            placeholder="e.g., 650"
-            style={{ width: 180, padding: "10px 12px", borderRadius: 8, border: "1px solid #bbb" }}
-          />
-        </div>
+      {/* Macros */}
+      <div className="card" style={{ borderColor: "rgba(255,255,255,0.10)" }}>
+        <div className="card-inner">
+          <div className="card-title">Macros</div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <div>
-            <label style={{ display: "block", marginBottom: 6, color: "#666" }}>
-              Protein (g)
-            </label>
-            <input
-              name="protein_g"
-              inputMode="decimal"
-              defaultValue="0"
-              style={{ width: 140, padding: "10px 12px", borderRadius: 8, border: "1px solid #bbb" }}
-            />
-          </div>
-          <div>
-            <label style={{ display: "block", marginBottom: 6, color: "#666" }}>
-              Carbs (g)
-            </label>
-            <input
-              name="carbs_g"
-              inputMode="decimal"
-              defaultValue="0"
-              style={{ width: 140, padding: "10px 12px", borderRadius: 8, border: "1px solid #bbb" }}
-            />
-          </div>
-          <div>
-            <label style={{ display: "block", marginBottom: 6, color: "#666" }}>
-              Fat (g)
-            </label>
-            <input
-              name="fat_g"
-              inputMode="decimal"
-              defaultValue="0"
-              style={{ width: 140, padding: "10px 12px", borderRadius: 8, border: "1px solid #bbb" }}
-            />
-          </div>
-        </div>
+          <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+            <div style={{ maxWidth: 220 }}>
+              <label style={labelStyle}>Calories</label>
+              <input
+                name="calories"
+                inputMode="decimal"
+                placeholder="e.g., 650"
+                style={inputStyle}
+              />
+            </div>
 
-        <div style={{ color: "#777", fontSize: 13 }}>
-          Numbers allow up to 2 decimals (e.g., 1.5, .25)
-        </div>
-      </div>
-
-      <div style={{ borderTop: "1px solid #eee", paddingTop: 12 }}>
-        <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <input
-            type="checkbox"
-            name="save_as_meal"
-            checked={saveAsMeal}
-            onChange={(e) => setSaveAsMeal(e.target.checked)}
-          />
-          <span>Also save as a Saved Meal</span>
-        </label>
-
-        {saveAsMeal ? (
-          <div style={{ marginTop: 10 }}>
-            <label style={{ display: "block", marginBottom: 6, color: "#666" }}>
-              Saved Meal name (optional)
-            </label>
-            <input
-              name="template_name"
-              placeholder="Defaults to Description"
+            <div
               style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 8,
-                border: "1px solid #bbb",
+                display: "grid",
+                gap: 12,
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
               }}
-            />
+            >
+              <div>
+                <label style={labelStyle}>Protein (g)</label>
+                <input
+                  name="protein_g"
+                  inputMode="decimal"
+                  defaultValue="0"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Carbs (g)</label>
+                <input
+                  name="carbs_g"
+                  inputMode="decimal"
+                  defaultValue="0"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Fat (g)</label>
+                <input
+                  name="fat_g"
+                  inputMode="decimal"
+                  defaultValue="0"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            <div className="card-muted" style={{ fontSize: 13 }}>
+              Numbers allow up to 2 decimals (e.g., 1.5, .25)
+            </div>
           </div>
-        ) : null}
+        </div>
       </div>
 
-      <SubmitButton />
+      {/* Save as template */}
+      <div className="card" style={{ borderColor: "rgba(255,255,255,0.10)" }}>
+        <div className="card-inner">
+          <div className="card-title">Template</div>
+
+          <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
+            <input
+              type="checkbox"
+              name="save_as_meal"
+              checked={saveAsMeal}
+              onChange={(e) => setSaveAsMeal(e.target.checked)}
+            />
+            <span style={{ color: "rgba(255,255,255,0.82)" }}>
+              Also save as a Saved Meal
+            </span>
+          </label>
+
+          {saveAsMeal ? (
+            <div style={{ marginTop: 12 }}>
+              <label style={labelStyle}>Saved Meal name (optional)</label>
+              <input
+                name="template_name"
+                placeholder="Defaults to Description"
+                style={inputStyle}
+              />
+            </div>
+          ) : (
+            <div className="card-muted" style={{ marginTop: 10, fontSize: 13 }}>
+              Optional, but future-you will thank you.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Submit */}
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <SubmitButton />
+      </div>
     </form>
   );
 }

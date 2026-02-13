@@ -3,7 +3,6 @@ import { DeclareActions } from "./DeclareActions";
 import { SavedMealLogForm } from "./SavedMealLogForm";
 import Link from "next/link";
 
-
 function n(nv: number | null | undefined) {
   return typeof nv === "number" ? nv : 0;
 }
@@ -12,69 +11,145 @@ export default async function DeclarePage() {
   const meals = await fetchSavedMealsHome();
 
   return (
-    <main>
-      <header style={{ marginBottom: 16 }}>
+    <main style={{ maxWidth: 980, margin: "0 auto", padding: "20px 16px 90px" }}>
+      {/* Header */}
+      <header style={{ marginBottom: 18 }}>
         <h1 style={{ margin: 0 }}>Declare Intake</h1>
-        <p style={{ marginTop: 6, color: "#555" }}>
+        <p className="card-muted" style={{ marginTop: 6 }}>
           This is the only place you log food. Home only judges you.
         </p>
       </header>
-      
-      <div style={{ marginTop: 10 }}>
-        <Link href="/baseline/declare/manual" style={{ textDecoration: "none" }}>
-          + Manual Log
-        </Link>
-      </div>
 
+      {/* Top Action Buttons */}
+      <section style={{ marginBottom: 22 }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          }}
+        >
+          {/* Manual Log */}
+          <Link
+            href="/baseline/declare/manual"
+            style={{ textDecoration: "none" }}
+          >
+            <div className="card" style={{ cursor: "pointer" }}>
+              <div className="card-inner">
+                <div className="card-title">Manual Log</div>
+                <div style={{ fontSize: 18, fontWeight: 750, marginTop: 10 }}>
+                  Enter meal manually
+                </div>
+                <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
+                  Direct macro entry
+                </div>
+              </div>
+            </div>
+          </Link>
+
+          {/* AI Log (placeholder for now) */}
+          <div
+            className="card"
+            style={{
+              cursor: "not-allowed",
+              borderColor: "rgba(168, 85, 247, 0.22)",
+              boxShadow: "0 14px 40px rgba(124, 58, 237, 0.16)",
+              background:
+                "radial-gradient(700px 300px at 10% 0%, rgba(124, 58, 237, 0.22), transparent 60%), linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))",
+            }}
+          >
+            <div className="card-inner">
+              <div className="card-title">AI Log</div>
+              <div style={{ fontSize: 18, fontWeight: 750, marginTop: 10 }}>
+                Describe your meal
+              </div>
+              <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
+                “3 eggs, toast, coffee…” (coming next phase)
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Saved Meals */}
       <section style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: "0 0 8px 0" }}>Saved Meals</h2>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 700 }}>Saved Meals</div>
+          <div className="card-muted" style={{ fontSize: 13 }}>
+            Quick re-log
+          </div>
+        </div>
 
         {meals.length === 0 ? (
-          <div style={{ border: "1px dashed #bbb", borderRadius: 10, padding: 12, color: "#666" }}>
-            No saved meals yet.
+          <div
+            className="card"
+            style={{ borderStyle: "dashed", borderColor: "rgba(255,255,255,0.14)" }}
+          >
+            <div className="card-inner">
+              <div style={{ fontWeight: 650 }}>No saved meals yet</div>
+              <div className="card-muted" style={{ marginTop: 6 }}>
+                Log something manually. Save it. Become efficient.
+              </div>
+            </div>
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "grid", gap: 12 }}>
             {meals.map((m) => (
-              <div
-                key={m.id}
-                style={{ border: "1px solid #ddd", borderRadius: 10, padding: 12 }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <div>
-                    <strong>{m.name}</strong>
-                    {m.description ? (
-                      <div style={{ marginTop: 6, color: "#666" }}>{m.description}</div>
-                    ) : null}
-                  </div>
-
-                  <div style={{ textAlign: "right", color: "#666", whiteSpace: "nowrap" }}>
-                    <div><strong>{n(m.calories)}</strong> cal</div>
-                    <div>P {n(m.protein_g)}g</div>
-                    <div>C {n(m.carbs_g)}g</div>
-                    <div>F {n(m.fat_g)}g</div>
-                  </div>
-                  <SavedMealLogForm savedMealId={m.id} />
-                </div>
-
-                <div style={{ marginTop: 10, color: "#777", fontSize: 13 }}>
-                  Fiber {n(m.fiber_g)}g · Sugar {n(m.sugar_g)}g · Sodium {n(m.sodium_mg)}mg
-                </div>
-
-                <div style={{ marginTop: 10 }}>
+              <div key={m.id} className="card">
+                <div className="card-inner">
                   <div
                     style={{
-                      marginTop: 10,
-                      padding: "10px 12px",
-                      borderRadius: 8,
-                      border: "1px dashed #bbb",
-                      color: "#666",
-                      fontSize: 14,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 16,
+                      alignItems: "flex-start",
                     }}
                   >
-                    Tap to log (enabled next phase)
-                  </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 750 }}>{m.name}</div>
 
+                      {m.description ? (
+                        <div
+                          className="card-muted"
+                          style={{ marginTop: 6, fontSize: 13 }}
+                        >
+                          {m.description}
+                        </div>
+                      ) : null}
+
+                      <div
+                        className="card-muted"
+                        style={{ marginTop: 10, fontSize: 13 }}
+                      >
+                        Fiber {n(m.fiber_g)}g · Sugar {n(m.sugar_g)}g · Sodium{" "}
+                        {n(m.sodium_mg)}mg
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        textAlign: "right",
+                        whiteSpace: "nowrap",
+                        fontSize: 14,
+                      }}
+                    >
+                      <div>
+                        <strong>{n(m.calories)}</strong> cal
+                      </div>
+                      <div>P {n(m.protein_g)}g</div>
+                      <div>C {n(m.carbs_g)}g</div>
+                      <div>F {n(m.fat_g)}g</div>
+                    </div>
+
+                    <SavedMealLogForm savedMealId={m.id} />
+                  </div>
                 </div>
               </div>
             ))}
@@ -86,4 +161,3 @@ export default async function DeclarePage() {
     </main>
   );
 }
-

@@ -1,26 +1,224 @@
-@import "tailwindcss";
 
+/* =========================
+   Global design tokens
+========================= */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Base */
+  --bg: #0f1115;
+  --panel: #161a22;
+  --panel-2: #121620;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.68);
+  --faint: rgba(255, 255, 255, 0.48);
+
+  /* Brand (purple) */
+  --p1: #7c3aed;
+  --p2: #a855f7;
+  --p3: #c084fc;
+
+  /* Semantics */
+  --warn: #f59e0b;
+  --crit: #ef4444;
+
+  /* Radius / shadows */
+  --r-lg: 18px;
+  --r-md: 14px;
+  --shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  --shadow-soft: 0 10px 24px rgba(0, 0, 0, 0.28);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* =========================
+   App background (glow + grid)
+========================= */
+.app-bg {
+  background: var(--bg);
+  color: var(--text);
+  position: relative;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Purple ambient glow */
+.app-bg::before {
+  content: "";
+  position: absolute;
+  inset: -200px;
+  background:
+    radial-gradient(700px 500px at 20% 10%, rgba(124, 58, 237, 0.28), transparent 60%),
+    radial-gradient(900px 600px at 80% 0%, rgba(168, 85, 247, 0.20), transparent 55%),
+    radial-gradient(900px 700px at 60% 90%, rgba(192, 132, 252, 0.12), transparent 60%);
+  filter: blur(18px);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+/* Subtle grid overlay */
+.app-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 64px 64px;
+  opacity: 0.06; /* tune: 0.04–0.08 */
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+/* Noise layer (as a real element so you can tune it per page) */
+.noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.32'/%3E%3C/svg%3E");
+  opacity: 0.06; /* tune: 0.04–0.08 */
+  mix-blend-mode: overlay;
+}
+
+/* =========================
+   Reusable Card styles
+========================= */
+.card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(8px);
+}
+
+.card-inner {
+  padding: 14px 14px;
+}
+
+.card-muted {
+  color: var(--muted);
+}
+
+.card-title {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* =========================
+   Bottom Navigation
+========================= */
+
+.bottom-nav-wrap {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  pointer-events: none; /* only the nav itself receives clicks */
+}
+
+.bottom-nav {
+  pointer-events: auto;
+  max-width: 980px;
+  margin: 0 auto;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(18, 22, 32, 0.72);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 18px 45px rgba(0,0,0,0.45);
+  overflow: hidden;
+  position: relative;
+}
+
+.bottom-nav::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(90deg, rgba(124,58,237,0.35), rgba(168,85,247,0.20), rgba(192,132,252,0.12));
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.bottom-nav-inner {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  padding: 8px;
+}
+
+.nav-item {
+  text-decoration: none;
+  color: rgba(255,255,255,0.70);
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 10px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  transition: transform 180ms ease, background 180ms ease, color 180ms ease, border-color 180ms ease;
+  user-select: none;
+}
+
+.nav-item:hover {
+  transform: translateY(-1px);
+  color: rgba(255,255,255,0.88);
+  background: rgba(255,255,255,0.04);
+}
+
+.nav-item-active {
+  color: rgba(255,255,255,0.92);
+  background: rgba(124,58,237,0.18);
+  border-color: rgba(168,85,247,0.22);
+  box-shadow: 0 10px 30px rgba(124,58,237,0.18);
+}
+
+.nav-item-center {
+  font-weight: 750;
+  color: rgba(255,255,255,0.92);
+  background: radial-gradient(120px 60px at 50% 0%, rgba(124,58,237,0.35), rgba(124,58,237,0.10));
+  border-color: rgba(168,85,247,0.26);
+}
+
+.nav-pill {
+  display: inline-block;
+  height: 7px;
+  width: 7px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.35);
+}
+
+.nav-item-active .nav-pill {
+  background: linear-gradient(90deg, var(--p1), var(--p2), var(--p3));
+  box-shadow: 0 0 0 4px rgba(124,58,237,0.10);
+}
+
+/* =========================
+   More Page Responsive Grid
+========================= */
+
+/* Default: 2 per row (mobile) */
+.more-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* Desktop: 3 per row */
+@media (min-width: 1024px) {
+  .more-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
