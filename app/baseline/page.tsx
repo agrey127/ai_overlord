@@ -165,14 +165,17 @@ export default async function BaselineHomePage() {
           <div className="card">
             <div className="card-inner">
               <div className="card-title">Calories</div>
-
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginTop: 10 }}>
-                <div style={{ fontSize: 28, fontWeight: 750 }}>{fmt(caloriesConsumed, 0)}</div>
-                <div className="card-muted" style={{ fontSize: 13 }}>
-                  goal {fmt(calorieGoal, 0)}
-                </div>
+                <div className="stat-top-row">
+                  <div className="stat-big">
+                    {fmt(caloriesConsumed, 0)}g
+                  </div>
               </div>
-
+                  <div className="card-muted">
+                    goal {fmt(calorieGoal, 0)}g
+                  </div>
+                </div>
+    
               <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
                 {fmt(caloriesRemaining, 0)} remaining
               </div>
@@ -183,10 +186,13 @@ export default async function BaselineHomePage() {
           <div className="card">
             <div className="card-inner">
               <div className="card-title">Protein</div>
-
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginTop: 10 }}>
-                <div style={{ fontSize: 28, fontWeight: 750 }}>{fmt(proteinConsumed, 0)}g</div>
-                <div className="card-muted" style={{ fontSize: 13 }}>
+                <div className="stat-top-row">
+                  <div className="stat-big">
+                    {fmt(proteinConsumed, 0)}g
+                  </div>
+              </div>          
+                <div className="card-muted">
                   goal {fmt(proteinGoal, 0)}g
                 </div>
               </div>
@@ -203,39 +209,21 @@ export default async function BaselineHomePage() {
               <div className="card-title">Cashflow</div>
 
               {/* Top row */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "baseline",
-                  marginTop: 8,
-                  gap: 8,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 28,   // match protein exactly (adjust if needed)
-                    fontWeight: 750,
-                  }}
-                  title={fmtMoney(projectedBal)}
-                >
-                  {fmtMoney(projectedBal)}
-                </div>
-
-                <div className="card-muted" style={{ fontSize: 13 }}>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginTop: 10 }}>
+                <div className="stat-top-row">
+                  <div className="stat-big">
+                    {fmtMoney(projectedBal)}
+                  </div>
+              </div>
+                <div className="card-muted">
                   Projected (7d)
                 </div>
               </div>
-
-              {/* Bottom row */}
               <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
                 {fmtMoney(currentBal)} current
               </div>
             </div>
           </div>
-
-
-
         </div>  
       </section>
 

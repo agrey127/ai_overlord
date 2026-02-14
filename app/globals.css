@@ -253,3 +253,32 @@ body {
     white-space: normal;
   }
 }
+
+
+.stat-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.stat-big {
+  font-size: 28px;   /* match protein exactly */
+  font-weight: 750;
+  line-height: 1.1;
+}
+
+/* Mobile layout */
+@media (max-width: 640px) {
+  .stat-top-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+}
+
+@media (max-width: 640px) {
+  .card-muted {
+    font-size: 12px;
+  }
+}
