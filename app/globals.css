@@ -260,12 +260,19 @@ body {
   justify-content: space-between;
   align-items: baseline;
   gap: 8px;
+  margin-top: 8px;
 }
 
 .stat-big {
   font-size: 28px;   /* match protein exactly */
   font-weight: 750;
   line-height: 1.1;
+}
+
+@media (max-width: 640px) {
+  .stat-big {
+    font-size: 22px;   /* mobile size */
+  }
 }
 
 /* Mobile layout */
@@ -282,3 +289,5 @@ body {
     font-size: 12px;
   }
 }
+
+

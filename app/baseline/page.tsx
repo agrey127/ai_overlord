@@ -167,10 +167,10 @@ export default async function BaselineHomePage() {
               <div className="card-title">Calories</div>
                 <div className="stat-top-row">
                   <div className="stat-big">
-                    {fmt(caloriesConsumed, 0)}g
+                    {fmt(caloriesConsumed, 0)}
                   </div>
                   <div className="card-muted">
-                    goal {fmt(calorieGoal, 0)}g
+                    goal {fmt(calorieGoal, 0)}
                   </div>
                 </div>
               <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
