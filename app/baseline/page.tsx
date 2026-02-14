@@ -165,17 +165,14 @@ export default async function BaselineHomePage() {
           <div className="card">
             <div className="card-inner">
               <div className="card-title">Calories</div>
-              <div style={{ marginTop: 10 }}>
                 <div className="stat-top-row">
                   <div className="stat-big">
                     {fmt(caloriesConsumed, 0)}g
                   </div>
-              </div>
                   <div className="card-muted">
                     goal {fmt(calorieGoal, 0)}g
                   </div>
                 </div>
-    
               <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
                 {fmt(caloriesRemaining, 0)} remaining
               </div>
@@ -186,17 +183,14 @@ export default async function BaselineHomePage() {
           <div className="card">
             <div className="card-inner">
               <div className="card-title">Protein</div>
-              <div style={{ marginTop: 10 }}>
-                <div className="stat-top-row">
-                  <div className="stat-big">
-                    {fmt(proteinConsumed, 0)}g
-                  </div>
-              </div>          
+              <div className="stat-top-row">
+                <div className="stat-big">
+                  {fmt(proteinConsumed, 0)}g
+                </div>
                 <div className="card-muted">
                   goal {fmt(proteinGoal, 0)}g
                 </div>
               </div>
-
               <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
                 {fmt(proteinRemaining, 0)}g remaining
               </div>
@@ -207,14 +201,10 @@ export default async function BaselineHomePage() {
           <div className="card">
             <div className="card-inner">
               <div className="card-title">Cashflow</div>
-
-              {/* Top row */}
-              <div style={{ marginTop: 10 }}>
-                <div className="stat-top-row">
-                  <div className="stat-big">
-                    {fmtMoney(projectedBal)}
-                  </div>
-              </div>
+              <div className="stat-top-row">
+                <div className="stat-big">
+                  {fmtMoney(projectedBal)}
+                </div>
                 <div className="card-muted">
                   Projected (7d)
                 </div>
