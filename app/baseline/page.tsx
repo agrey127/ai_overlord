@@ -165,7 +165,7 @@ export default async function BaselineHomePage() {
           <div className="card">
             <div className="card-inner">
               <div className="card-title">Calories</div>
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginTop: 10 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginTop: 10 }}>
                 <div className="stat-top-row">
                   <div className="stat-big">
                     {fmt(caloriesConsumed, 0)}g
