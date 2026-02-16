@@ -189,7 +189,7 @@ export default function AiLogPage() {
       }
     });
   }
-
+  //just a test
   function closeModal() {
     setModalOpen(false);
   }
