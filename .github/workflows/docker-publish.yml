@@ -9,6 +9,17 @@ permissions:
   packages: write
 
 jobs:
+  build:name: Build and Push Docker Image
+
+on:
+  push:
+    branches: ["master"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
   build:
     runs-on: ubuntu-latest
     steps:
