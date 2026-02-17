@@ -48,26 +48,30 @@ export default async function DeclarePage() {
           </Link>
 
           {/* AI Log (placeholder for now) */}
-          <div
-            className="card"
-            style={{
-              cursor: "not-allowed",
-              borderColor: "rgba(168, 85, 247, 0.22)",
-              boxShadow: "0 14px 40px rgba(124, 58, 237, 0.16)",
-              background:
-                "radial-gradient(700px 300px at 10% 0%, rgba(124, 58, 237, 0.22), transparent 60%), linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))",
-            }}
-          >
-            <div className="card-inner">
-              <div className="card-title">AI Log</div>
-              <div style={{ fontSize: 18, fontWeight: 750, marginTop: 10 }}>
-                Describe your meal
-              </div>
-              <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
-                “3 eggs, toast, coffee…” (coming next phase)
+          {/* AI Log */}
+          <Link href="/baseline/declare/ailog" style={{ textDecoration: "none" }}>
+            <div
+              className="card"
+              style={{
+                cursor: "pointer",
+                borderColor: "rgba(168, 85, 247, 0.22)",
+                boxShadow: "0 14px 40px rgba(124, 58, 237, 0.16)",
+                background:
+                  "radial-gradient(700px 300px at 10% 0%, rgba(124, 58, 237, 0.22), transparent 60%), linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02))",
+              }}
+            >
+              <div className="card-inner">
+                <div className="card-title">AI Log</div>
+                <div style={{ fontSize: 18, fontWeight: 750, marginTop: 10 }}>
+                  Describe your meal
+                </div>
+                <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
+                  “3 eggs, toast, coffee…” (do it. i dare you.)
+                </div>
               </div>
             </div>
-          </div>
+          </Link>
+
         </div>
       </section>
 
@@ -157,7 +161,7 @@ export default async function DeclarePage() {
         )}
       </section>
 
-      <DeclareActions />
+      
     </main>
   );
 }
