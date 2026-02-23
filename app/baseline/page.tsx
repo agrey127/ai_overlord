@@ -4,6 +4,7 @@ import {
   fetchActiveLifeSignals,
   fetchMicroTrendsHome,
 } from "@/lib/data/baseline";
+import { RefreshAllButton } from "@/components/RefreshAllButton";
 
 function safeNum(n: number | null | undefined) {
   return typeof n === "number" ? n : 0;
@@ -132,24 +133,20 @@ export default async function BaselineHomePage() {
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: "20px 16px 90px" }}>
       {/* Header */}
-      <header style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: 18,
+        }}
+      >
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 650, margin: 0 }}>Baseline</h1>
-          <div
-            style={{
-              height: 2,
-              marginTop: 10,
-              borderRadius: 999,
-              background: "linear-gradient(90deg, var(--p1), var(--p2), var(--p3))",
-              opacity: 0.65,
-            }}
-          />
-          <div className="card-muted" style={{ fontSize: 13, marginTop: 8 }}>
-            Daily control surface. No charts. Just decisions.
-          </div>
+          <h1>Baseline</h1>
+          <p className="card-muted">System online.</p>
         </div>
 
-        <div style={{ fontSize: 13, color: "var(--muted)" }}>Today</div>
+        <RefreshAllButton />
       </header>
 
       {/* Control Knobs */}
