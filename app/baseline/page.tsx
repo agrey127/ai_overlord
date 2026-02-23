@@ -109,6 +109,9 @@ function severityLabel(sev: number | null | undefined) {
   return "Info";
 }
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function BaselineHomePage() {
   const nutrition = await fetchTodayNutritionHome();
   const cashflow = await fetchCashflowProjection7d();
@@ -129,6 +132,8 @@ export default async function BaselineHomePage() {
 
   const signals = await fetchActiveLifeSignals();
   const topSignal = signals[0] ?? null;
+
+  
 
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: "20px 16px 90px" }}>
