@@ -38,24 +38,36 @@ body {
   color: var(--text);
 }
 
-/* =========================
-   App background (glow + grid)
-========================= */
+/* ===== Background Stack (desktop + mobile safe) ===== */
+
+/* Global guardrails: stop sideways-scroll at the source */
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Your body uses this class in layout.tsx */
 .app-bg {
   background: var(--bg);
   color: var(--text);
   position: relative;
   min-height: 100vh;
 
-  overflow: hidden;      /* <-- key: clips the huge glow */
-  isolation: isolate;    /* <-- keeps blend/filter layers contained */
+  /* Keep vertical scroll working */
+  overflow-x: hidden;
+  overflow-y: visible;
+
+  /* Contain blend/filter compositing */
+  isolation: isolate;
 }
 
-/* Purple ambient glow */
+/* Purple ambient glow (fixed so it never affects layout width) */
 .app-bg::before {
   content: "";
-  position: absolute;
-  inset: -200px;
+  position: fixed;
+  inset: -200px; /* big glow canvas is fine when fixed */
   background:
     radial-gradient(700px 500px at 20% 10%, rgba(124, 58, 237, 0.28), transparent 60%),
     radial-gradient(900px 600px at 80% 0%, rgba(168, 85, 247, 0.20), transparent 55%),
@@ -63,32 +75,41 @@ body {
   filter: blur(18px);
   opacity: 0.9;
   pointer-events: none;
+  z-index: -2; /* always behind everything */
 }
 
-/* Subtle grid overlay */
+/* Subtle grid overlay (fixed) */
 .app-bg::after {
   content: "";
-  position: absolute;
+  position: fixed;
   inset: 0;
   background:
     linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
   background-size: 64px 64px;
-  opacity: 0.06; /* tune: 0.04–0.08 */
+  opacity: 0.06;
   pointer-events: none;
   mix-blend-mode: overlay;
+  z-index: -1;
 }
 
-/* Noise layer (as a real element so you can tune it per page) */
+/* Noise layer (real element from layout.tsx) */
 .noise {
-  position: absolute;
+  position: fixed;
   inset: 0;
   pointer-events: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.32'/%3E%3C/svg%3E");
-  opacity: 0.06; /* tune: 0.04–0.08 */
+  opacity: 0.06;
   mix-blend-mode: overlay;
+  z-index: 0; /* sits above the glow/grid but below content wrapper */
 }
 
+/* Optional: prevent any flex children from forcing overflow */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 /* =========================
    Reusable Card styles
 ========================= */
