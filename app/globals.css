@@ -46,7 +46,9 @@ body {
   color: var(--text);
   position: relative;
   min-height: 100vh;
-  overflow-x: hidden;
+
+  overflow: hidden;      /* <-- key: clips the huge glow */
+  isolation: isolate;    /* <-- keeps blend/filter layers contained */
 }
 
 /* Purple ambient glow */
