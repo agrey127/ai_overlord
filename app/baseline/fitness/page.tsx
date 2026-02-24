@@ -13,6 +13,9 @@ function bandLabel(band: string) {
   return "Unknown";
 }
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function FitnessPage() {
   const [today, week, trends] = await Promise.all([
     fetchFitnessTodayHome(),
