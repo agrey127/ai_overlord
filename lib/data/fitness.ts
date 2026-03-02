@@ -129,12 +129,26 @@ export async function fetchLoadRecoveryBalance(userId: string) {
 ------------------------------ */
 export type RaceReadinessRow = {
   user_id: string;
+
+  // daily gate context (still useful)
   readiness_color: string | null;
   readiness_as_of_day: string | null;
 
+  // NEW: race-readiness color scale (green/yellow/orange/red)
+  readiness_band: "green" | "yellow" | "orange" | "red" | null;
+
+  // 7d rollups (kept names for UI compatibility)
   runs_this_week: number | null;
   strength_this_week: number | null;
+
+  // long-run signal used in scoring
   last_long_min: number | null;
+
+  // NEW (optional, but your page tries to display them)
+  miles_7d: number | null;
+  miles_30d: number | null;
+  avg_weekly_miles_30d: number | null;
+  est_race_minutes: number | null;
 
   readiness_score: number | null;
   drivers: string[] | null;
