@@ -4,93 +4,151 @@ function oneRow<T>(data: T[] | null | undefined) {
   return (data?.[0] ?? null) as T | null;
 }
 
-export type FitnessTodayHomeRow = {
+/* -----------------------------
+   Readiness (color + freshness)
+------------------------------ */
+export type ReadinessStatusRow = {
   user_id: string;
+  as_of_day: string | null;
+  as_of_updated_at: string | null;
+  data_age_hours: number | null;
+
   sleep_score: number | null;
-  sleep_band: string;
   resting_heart_rate: number | null;
   rhr_avg_30d: number | null;
   rhr_delta: number | null;
-  rhr_flag: boolean | null;
+
   steps: number | null;
-  steps_goal: number | null;
-  steps_remaining: number | null;
-  training_minutes_today: number | null;
-  distance_today: number | null;
-  strength_sessions_today: number | null;
-  is_hard_day_today: boolean | null;
+  steps_avg_3d: number | null;
+
+  penalty: number | null;
+  readiness_color: "green" | "yellow" | "red" | "gray" | string;
+
+  reasons: string[] | null; // text[] comes back as array in supabase-js
 };
 
-export async function fetchFitnessTodayHome(userId: string) {
+export async function fetchReadinessStatus(userId: string) {
   const supabase = supabaseClient();
 
   const { data, error } = await supabase
-    .from("v_fitness_today_home")
+    .from("v_readiness_status")
     .select("*")
     .eq("user_id", userId)
     .limit(1);
 
-  if (error) throw new Error(`v_fitness_today_home: ${error.message}`);
-  return oneRow<FitnessTodayHomeRow>(data);
+  if (error) throw new Error(`v_readiness_status: ${error.message}`);
+  return oneRow<ReadinessStatusRow>(data);
 }
 
-export type FitnessWeekHomeRow = {
+/* -----------------------------
+   Run consistency (≤2 day rule)
+------------------------------ */
+export type RunConsistencyRow = {
   user_id: string;
-  week_start: string | null;
-  run_sessions_week: number | null;
-  run_goal_week: number | null;
-  runs_remaining_week: number | null;
-  hard_days_week: number | null;
-  hard_days_budget_week: number | null;
-  hard_days_remaining_week: number | null;
-  strength_sessions_week: number | null;
-  strength_goal_week: number | null;
-  strength_remaining_week: number | null;
-  minutes_week: number | null;
-  distance_week: number | null;
   last_run_date: string | null;
   days_since_last_run: number | null;
+  within_2_day_rule: boolean | null;
+  max_gap_last_30d: number | null;
 };
 
-export async function fetchFitnessWeekHome(userId: string) {
+export async function fetchRunConsistency(userId: string) {
   const supabase = supabaseClient();
 
   const { data, error } = await supabase
-    .from("v_fitness_week_home")
+    .from("v_run_consistency")
     .select("*")
     .eq("user_id", userId)
     .limit(1);
 
-  if (error) throw new Error(`v_fitness_week_home: ${error.message}`);
-  return oneRow<FitnessWeekHomeRow>(data);
+  if (error) throw new Error(`v_run_consistency: ${error.message}`);
+  return oneRow<RunConsistencyRow>(data);
 }
 
-export type FitnessTrendsHomeRow = {
+/* -----------------------------
+   Long run progression
+------------------------------ */
+export type LongRunProgressionRow = {
   user_id: string;
+  last_long_day: string | null;
+  last_long_min: number | null;
+  prev_long_day: string | null;
+  prev_long_min: number | null;
+  delta_min: number | null;
+  next_target_min: number | null;
+  jumped_too_fast: boolean | null;
+};
+
+export async function fetchLongRunProgression(userId: string) {
+  const supabase = supabaseClient();
+
+  const { data, error } = await supabase
+    .from("v_long_run_progression")
+    .select("*")
+    .eq("user_id", userId)
+    .limit(1);
+
+  if (error) throw new Error(`v_long_run_progression: ${error.message}`);
+  return oneRow<LongRunProgressionRow>(data);
+}
+
+/* -----------------------------
+   Load vs recovery balance
+------------------------------ */
+export type LoadRecoveryBalanceRow = {
+  user_id: string;
+
+  run_minutes_7d: number | null;
+  run_minutes_30d: number | null;
+
   sleep_avg_7d: number | null;
   sleep_avg_30d: number | null;
   sleep_delta_7v30: number | null;
+
   rhr_avg_7d: number | null;
   rhr_avg_30d: number | null;
   rhr_delta_7v30: number | null;
-  steps_avg_7d: number | null;
-  steps_avg_30d: number | null;
-  steps_delta_7v30: number | null;
-  minutes_7d: number | null;
-  minutes_30d: number | null;
-  distance_7d: number | null;
-  distance_30d: number | null;
+
+  overreach_risk: boolean | null;
 };
 
-export async function fetchFitnessTrendsHome(userId: string) {
+export async function fetchLoadRecoveryBalance(userId: string) {
   const supabase = supabaseClient();
 
   const { data, error } = await supabase
-    .from("v_fitness_trends_home")
+    .from("v_load_recovery_balance")
     .select("*")
     .eq("user_id", userId)
     .limit(1);
 
-  if (error) throw new Error(`v_fitness_trends_home: ${error.message}`);
-  return oneRow<FitnessTrendsHomeRow>(data);
+  if (error) throw new Error(`v_load_recovery_balance: ${error.message}`);
+  return oneRow<LoadRecoveryBalanceRow>(data);
+}
+
+/* -----------------------------
+   Race readiness snapshot
+------------------------------ */
+export type RaceReadinessRow = {
+  user_id: string;
+  readiness_color: string | null;
+  readiness_as_of_day: string | null;
+
+  runs_this_week: number | null;
+  strength_this_week: number | null;
+  last_long_min: number | null;
+
+  readiness_score: number | null;
+  drivers: string[] | null;
+};
+
+export async function fetchRaceReadiness(userId: string) {
+  const supabase = supabaseClient();
+
+  const { data, error } = await supabase
+    .from("v_race_readiness")
+    .select("*")
+    .eq("user_id", userId)
+    .limit(1);
+
+  if (error) throw new Error(`v_race_readiness: ${error.message}`);
+  return oneRow<RaceReadinessRow>(data);
 }
