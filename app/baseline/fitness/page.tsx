@@ -28,7 +28,7 @@ function fmtDate(d: string | null | undefined) {
   return d.slice(0, 10);
 }
 
-function readinessDot(color: string | null | undefined) {
+function dotColor(color: string | null | undefined) {
   const c = (color ?? "gray").toLowerCase();
   const map: Record<string, string> = {
     green: "rgba(34,197,94,0.92)",
@@ -40,60 +40,28 @@ function readinessDot(color: string | null | undefined) {
   return map[c] ?? map.gray;
 }
 
-function bandPanelStyles(band: string | null | undefined) {
+function bandPanel(band: string | null | undefined) {
   const b = (band ?? "red").toLowerCase();
-  const map: Record<string, { bg: string; border: string; label: string }> = {
-    green: { bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.40)", label: "Green" },
-    yellow: { bg: "rgba(234,179,8,0.12)", border: "rgba(234,179,8,0.40)", label: "Yellow" },
-    orange: { bg: "rgba(249,115,22,0.12)", border: "rgba(249,115,22,0.40)", label: "Orange" },
-    red: { bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.40)", label: "Red" },
-    gray: { bg: "rgba(148,163,184,0.10)", border: "rgba(148,163,184,0.28)", label: "—" },
+  const map: Record<string, { bg: string; border: string }> = {
+    green: { bg: "rgba(34,197,94,0.12)", border: "rgba(34,197,94,0.40)" },
+    yellow: { bg: "rgba(234,179,8,0.12)", border: "rgba(234,179,8,0.40)" },
+    orange: { bg: "rgba(249,115,22,0.12)", border: "rgba(249,115,22,0.40)" },
+    red: { bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.40)" },
   };
   return map[b] ?? map.red;
 }
 
-function MiniBar({
-  label,
-  value,
-  max,
-  note,
-}: {
-  label: string;
-  value: number;
-  max: number;
-  note?: string;
-}) {
-  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-        <div className="card-muted" style={{ fontSize: 12 }}>
-          {label}
-        </div>
-        <div className="card-muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
-          {note ?? ""}
-        </div>
-      </div>
-      <div
-        style={{
-          height: 7,
-          marginTop: 4,
-          background: "rgba(255,255,255,0.08)",
-          borderRadius: 999,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            width: `${pct}%`,
-            height: 7,
-            background: "rgba(124,58,237,0.85)",
-            borderRadius: 999,
-          }}
-        />
-      </div>
-    </div>
-  );
+function uniqTop(items: string[], limit = 3) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const it of items) {
+    const k = it.trim();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(k);
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 export default async function FitnessPage() {
@@ -105,30 +73,47 @@ export default async function FitnessPage() {
     fetchRaceReadiness(USER_ID),
   ]);
 
-  // Daily readiness gate (green/yellow/red/gray)
   const gateColor = (gate?.readiness_color ?? "gray").toLowerCase();
+  const band = ((race as any)?.readiness_band ?? "red").toLowerCase() as string; // keeps build happy even if type lags
+  const panel = bandPanel(band);
 
-  // Race readiness band (green/yellow/orange/red)
-  const band = (race?.readiness_band ?? "red").toLowerCase();
-  const bandPanel = bandPanelStyles(band);
+  // ---- Actionables (score-driven, not metric soup) ----
+  const drivers = (race?.drivers ?? []).map((s) => (s ?? "").toString());
+  const actionables: string[] = [];
 
+  const runs7dBelow = drivers.some((d) => d.toLowerCase().includes("7d runs below"));
+  const strength7dBelow = drivers.some((d) => d.toLowerCase().includes("7d strength below"));
+  const mileage30Needs = drivers.some((d) => d.toLowerCase().includes("30d mileage needs"));
+  const longRunNotReady = drivers.some((d) => d.toLowerCase().includes("long run not"));
+
+  if (runs7dBelow) actionables.push("Hit 5 runs in the next 7 days (no excuses, just logistics).");
+  if (strength7dBelow) actionables.push("Get 4 strength sessions in the next 7 days (short sessions count).");
+  if (mileage30Needs) actionables.push("Raise 30-day average weekly mileage toward 26.2+ (add easy volume).");
+  if (longRunNotReady) actionables.push("In the next 30 days: complete a long run that meets race demand (13.1 mi OR your predicted race duration).");
+
+  // Always include your “≤2 days without a run” rule as a behavioral guardrail
   const daysSinceRun = consistency?.days_since_last_run ?? null;
-  const within2 = !!consistency?.within_2_day_rule;
-  const overreach = !!balance?.overreach_risk;
+  if ((daysSinceRun ?? 0) >= 3) actionables.unshift("You broke the 2-day gap rule: do an easy run today.");
 
-  // Primary recommendation (simple, useful, not “today stats”)
-  let reco = "Maintenance day: walk + mobility.";
-  if (gateColor === "red" || overreach) {
-    reco = "Recovery day. Easy walk + mobility. Skip intensity.";
-  } else if (gateColor === "gray") {
-    reco = "Sleep/RHR not synced yet. Default to easy effort until it lands.";
-  } else if (!within2 && (daysSinceRun ?? 99) >= 3) {
-    reco = "You’re at/over the 2-day gap rule. 30–45 min easy run today.";
-  } else if ((race?.readiness_score ?? 0) < 75) {
-    reco = "Build day: easy run + keep strength on track. Don’t chase hero workouts.";
-  } else {
-    reco = "You’re trending well. Execute the plan (and don’t get cute).";
-  }
+  // Trim to top 3, but ensure *something* shows
+  const topActions = uniqTop(
+    actionables.length
+      ? actionables
+      : [
+          "Keep the 2 hard-day ceiling. Make the rest boring-easy volume.",
+          "Long run every 7–10 days. Don’t skip the cornerstone.",
+          "Sleep/RHR gate decides intensity, not your mood.",
+        ],
+    3
+  );
+
+  // ---- Next Action (single sentence) ----
+  const overreach = !!balance?.overreach_risk;
+  let reco = "Execute the plan: easy volume + keep strength on track.";
+  if (gateColor === "red" || overreach) reco = "Recovery day: walk + mobility. No intensity.";
+  else if (gateColor === "gray") reco = "Data pending: default to easy effort until sleep/RHR syncs.";
+  else if ((daysSinceRun ?? 0) >= 3) reco = "Easy run today (30–45 min). Re-establish rhythm.";
+  else if ((race?.readiness_score ?? 0) < 75) reco = "Build day: easy run + strength. Consistency beats hero days.";
 
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: "20px 16px 90px" }}>
@@ -136,31 +121,17 @@ export default async function FitnessPage() {
       <header style={{ marginBottom: 18 }}>
         <h1 style={{ margin: 0 }}>Fitness</h1>
         <p className="card-muted" style={{ marginTop: 6 }}>
-          Rolling windows. Stricter rules. Less self-deception.
+          Score + actionables. Everything else is noise.
         </p>
       </header>
 
-      {/* Top row: Race readiness + Daily readiness gate */}
-      <section
-        style={{
-          display: "grid",
-          gap: 12,
-          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-        }}
-      >
+      {/* Top row */}
+      <section style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
         {/* Race Readiness */}
-        <div
-          className="card"
-          style={{
-            background: bandPanel.bg,
-            borderColor: bandPanel.border,
-          }}
-        >
+        <div className="card" style={{ background: panel.bg, borderColor: panel.border }}>
           <div className="card-inner">
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div className="card-title" style={{ margin: 0 }}>
-                Race Readiness
-              </div>
+              <div className="card-title">Race Readiness</div>
               <div
                 style={{
                   marginLeft: "auto",
@@ -169,91 +140,37 @@ export default async function FitnessPage() {
                   gap: 8,
                   padding: "6px 10px",
                   borderRadius: 999,
-                  border: `1px solid ${bandPanel.border}`,
+                  border: `1px solid ${panel.border}`,
                   background: "rgba(0,0,0,0.10)",
                   fontSize: 12,
-                  fontWeight: 750,
+                  fontWeight: 800,
                   letterSpacing: 0.2,
                 }}
               >
-                <span
-                  style={{
-                    width: 9,
-                    height: 9,
-                    borderRadius: 999,
-                    background: readinessDot(band),
-                  }}
-                />
+                <span style={{ width: 9, height: 9, borderRadius: 999, background: dotColor(band) }} />
                 {band.toUpperCase()}
               </div>
             </div>
 
-            <div style={{ marginTop: 10, display: "flex", alignItems: "baseline", gap: 14 }}>
-              <div style={{ fontSize: 44, fontWeight: 900, letterSpacing: -0.6 }}>
-                {race?.readiness_score ?? "—"}
-              </div>
-              <div className="card-muted" style={{ fontSize: 13 }}>
-                7d + 30d rolling • last 45d only
-              </div>
+            <div style={{ marginTop: 10, fontSize: 46, fontWeight: 950, letterSpacing: -0.8 }}>
+              {race?.readiness_score ?? "—"}
             </div>
 
-            {/* Mini status bars */}
-            <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-              <MiniBar
-                label="7d runs"
-                value={n(race?.runs_this_week)}
-                max={5}
-                note={`${n(race?.runs_this_week)}/5`}
-              />
-              <MiniBar
-                label="7d strength"
-                value={n(race?.strength_this_week)}
-                max={4}
-                note={`${n(race?.strength_this_week)}/4`}
-              />
-              {/* These fields exist in the view we discussed; if they’re not in your current view yet, they’ll just show 0/—.
-                  You can remove them if you haven’t exposed miles_7d / avg_weekly_miles_30d / est_race_minutes in v_race_readiness. */}
-              <MiniBar
-                label="30d avg weekly mileage"
-                value={n((race as any)?.avg_weekly_miles_30d)}
-                max={26.2}
-                note={`${fmt1((race as any)?.avg_weekly_miles_30d)} / 26.2`}
-              />
-              <MiniBar
-                label="Long run vs race demand"
-                value={n(race?.last_long_min)}
-                max={n((race as any)?.est_race_minutes) || 120}
-                note={`${fmt0(race?.last_long_min)} / ${fmt0((race as any)?.est_race_minutes)}`}
-              />
+            <div className="card-muted" style={{ marginTop: 6, fontSize: 12 }}>
+              Rolling 7d + 30d (last 45d only)
             </div>
 
-            {/* Drivers */}
-            <div style={{ marginTop: 12, display: "grid", gap: 6 }}>
-              {(race?.drivers ?? []).slice(0, 4).map((d, idx) => {
-                const isBad = d.toLowerCase().includes("below") || d.toLowerCase().includes("needs");
-                return (
-                  <div
-                    key={idx}
-                    style={{
-                      fontSize: 13,
-                      opacity: isBad ? 0.95 : 0.7,
-                      fontWeight: isBad ? 750 : 550,
-                    }}
-                  >
-                    • {d}
-                  </div>
-                );
-              })}
-              {(race?.drivers ?? []).length === 0 ? (
-                <div className="card-muted" style={{ fontSize: 13 }}>
-                  • Not enough data yet.
+            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+              {topActions.map((a, idx) => (
+                <div key={idx} style={{ fontSize: 13, fontWeight: 700 }}>
+                  • {a}
                 </div>
-              ) : null}
+              ))}
             </div>
           </div>
         </div>
 
-        {/* Daily Readiness Gate (color dot, latest-available) */}
+        {/* Daily Readiness Gate (compact) */}
         <div className="card">
           <div className="card-inner">
             <div className="card-title">Readiness Gate</div>
@@ -264,36 +181,21 @@ export default async function FitnessPage() {
                   width: 14,
                   height: 14,
                   borderRadius: 999,
-                  background: readinessDot(gateColor),
+                  background: dotColor(gateColor),
                   boxShadow: "0 0 0 5px rgba(255,255,255,0.05)",
                 }}
                 aria-label={`readiness-${gateColor}`}
               />
-              <div style={{ fontSize: 18, fontWeight: 850, textTransform: "capitalize" }}>
+              <div style={{ fontSize: 16, fontWeight: 900, textTransform: "capitalize" }}>
                 {gateColor === "gray" ? "Pending" : gateColor}
               </div>
-
               <div className="card-muted" style={{ marginLeft: "auto", fontSize: 13 }}>
                 as of {fmtDate(gate?.as_of_day)}
               </div>
             </div>
 
             <div className="card-muted" style={{ marginTop: 10, fontSize: 13 }}>
-              Sleep: {gate?.sleep_score ?? "—"} • RHR Δ: {fmt1(gate?.rhr_delta)} • Age:{" "}
-              {gate?.data_age_hours ?? "—"}h
-            </div>
-
-            <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
-              {(gate?.reasons ?? []).slice(0, 3).map((r, idx) => (
-                <div key={idx} className="card-muted" style={{ fontSize: 13 }}>
-                  • {r}
-                </div>
-              ))}
-              {(gate?.reasons ?? []).length === 0 ? (
-                <div className="card-muted" style={{ fontSize: 13 }}>
-                  • No flags. Don’t waste it.
-                </div>
-              ) : null}
+              Sleep: {gate?.sleep_score ?? "—"} • RHR Δ: {fmt1(gate?.rhr_delta)} • Age: {gate?.data_age_hours ?? "—"}h
             </div>
           </div>
         </div>
@@ -304,30 +206,24 @@ export default async function FitnessPage() {
         <div className="card">
           <div className="card-inner">
             <div className="card-title">Next Action</div>
-            <div style={{ marginTop: 10, fontSize: 18, fontWeight: 750 }}>{reco}</div>
+            <div style={{ marginTop: 10, fontSize: 18, fontWeight: 800 }}>{reco}</div>
             <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
-              Rule: no more than 2 days without a run.
-              {consistency?.last_run_date ? ` Last run: ${fmtDate(consistency.last_run_date)}.` : ""}
+              ≤2-day rule: <strong>{consistency?.within_2_day_rule ? "holding" : "broken"}</strong> • Last run:{" "}
+              {fmtDate(consistency?.last_run_date)}
+              {balance?.overreach_risk ? " • ⚠️ overreach risk" : ""}
             </div>
           </div>
         </div>
       </section>
 
       {/* Long Run + Consistency */}
-      <section
-        style={{
-          marginTop: 14,
-          display: "grid",
-          gap: 12,
-          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-        }}
-      >
-        {/* Long Run Progression */}
+      <section style={{ marginTop: 14, display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+        {/* Long Run */}
         <div className="card">
           <div className="card-inner">
             <div className="card-title">Long Run</div>
 
-            <div style={{ marginTop: 10, fontSize: 30, fontWeight: 900 }}>
+            <div style={{ marginTop: 10, fontSize: 30, fontWeight: 950 }}>
               {longrun?.last_long_min ? `${fmt0(longrun.last_long_min)} min` : "—"}
               <span className="card-muted" style={{ fontSize: 13, fontWeight: 650, marginLeft: 10 }}>
                 last: {fmtDate(longrun?.last_long_day)}
@@ -335,31 +231,26 @@ export default async function FitnessPage() {
             </div>
 
             <div className="card-muted" style={{ marginTop: 8, fontSize: 13 }}>
-              Prev: {longrun?.prev_long_min ? `${fmt0(longrun.prev_long_min)} min` : "—"} • Δ{" "}
-              {fmt1(longrun?.delta_min)} min
-              {longrun?.jumped_too_fast ? " • ⚠️ jump > 15" : ""}
-            </div>
-
-            <div className="card-muted" style={{ marginTop: 8, fontSize: 13 }}>
-              Next target: {longrun?.next_target_min ? `${fmt0(longrun.next_target_min)} min` : "—"}
-            </div>
-
-            <div className="card-muted" style={{ marginTop: 10, fontSize: 13 }}>
               Strongest (30d):{" "}
               {(longrun as any)?.max_long_min_30d
                 ? `${fmt0((longrun as any)?.max_long_min_30d)} min`
                 : "—"}{" "}
               • {fmtDate((longrun as any)?.max_long_day_30d)}
             </div>
+
+            <div className="card-muted" style={{ marginTop: 8, fontSize: 13 }}>
+              Next target: {longrun?.next_target_min ? `${fmt0(longrun.next_target_min)} min` : "—"}
+              {longrun?.jumped_too_fast ? " • ⚠️ last jump > 15 min" : ""}
+            </div>
           </div>
         </div>
 
-        {/* Run Consistency */}
+        {/* Consistency */}
         <div className="card">
           <div className="card-inner">
             <div className="card-title">Consistency</div>
 
-            <div style={{ marginTop: 10, fontSize: 30, fontWeight: 900 }}>
+            <div style={{ marginTop: 10, fontSize: 30, fontWeight: 950 }}>
               {consistency?.days_since_last_run ?? "—"}
               <span className="card-muted" style={{ fontSize: 13, fontWeight: 650, marginLeft: 10 }}>
                 days since run
@@ -367,60 +258,11 @@ export default async function FitnessPage() {
             </div>
 
             <div className="card-muted" style={{ marginTop: 8, fontSize: 13 }}>
-              ≤2-day rule:{" "}
-              <strong>{consistency?.within_2_day_rule ? "holding" : "broken"}</strong>
+              Worst gap (30d): {n(consistency?.max_gap_last_30d)} days
             </div>
 
             <div className="card-muted" style={{ marginTop: 8, fontSize: 13 }}>
-              Worst gap (30d): {n(consistency?.max_gap_last_30d)} days
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Load vs Recovery */}
-      <section style={{ marginTop: 14 }}>
-        <div className="card">
-          <div className="card-inner">
-            <div className="card-title">Load vs Recovery (7d vs 30d)</div>
-
-            <div
-              style={{
-                marginTop: 10,
-                display: "grid",
-                gap: 10,
-                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-              }}
-            >
-              <div>
-                <div className="card-muted" style={{ fontSize: 12 }}>
-                  Run minutes (7d)
-                </div>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{fmt0(balance?.run_minutes_7d)}</div>
-              </div>
-              <div>
-                <div className="card-muted" style={{ fontSize: 12 }}>
-                  Run minutes (30d)
-                </div>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{fmt0(balance?.run_minutes_30d)}</div>
-              </div>
-              <div>
-                <div className="card-muted" style={{ fontSize: 12 }}>
-                  Sleep Δ (7–30)
-                </div>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{fmt1(balance?.sleep_delta_7v30)}</div>
-              </div>
-              <div>
-                <div className="card-muted" style={{ fontSize: 12 }}>
-                  RHR Δ (7–30)
-                </div>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{fmt1(balance?.rhr_delta_7v30)}</div>
-              </div>
-            </div>
-
-            <div className="card-muted" style={{ marginTop: 10, fontSize: 13 }}>
-              Risk flag: <strong>{balance?.overreach_risk ? "ON" : "off"}</strong>
-              {balance?.overreach_risk ? " • You’re stacking load while recovery slips." : " • Keep stacking smart."}
+              Load/Recovery flag: <strong>{balance?.overreach_risk ? "ON" : "off"}</strong>
             </div>
           </div>
         </div>
