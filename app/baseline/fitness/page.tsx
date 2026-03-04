@@ -10,6 +10,7 @@ import {
   fetchLongRunProgression,
   fetchLoadRecoveryBalance,
   fetchRaceReadiness,
+  fetchStepsSummary,
 } from "@/lib/data/fitness";
 
 const USER_ID = "agrey127@gmail.com";
@@ -65,16 +66,20 @@ function uniqTop(items: string[], limit = 3) {
 }
 
 export default async function FitnessPage() {
-  const [gate, consistency, longrun, balance, race] = await Promise.all([
+  const [gate, consistency, longrun, balance, race, steps] = await Promise.all([
     fetchReadinessStatus(USER_ID),
     fetchRunConsistency(USER_ID),
     fetchLongRunProgression(USER_ID),
     fetchLoadRecoveryBalance(USER_ID),
     fetchRaceReadiness(USER_ID),
+    fetchStepsSummary(USER_ID),
   ]);
 
+  // Daily readiness gate (green/yellow/red/gray)
   const gateColor = (gate?.readiness_color ?? "gray").toLowerCase();
-  const band = ((race as any)?.readiness_band ?? "red").toLowerCase() as string; // keeps build happy even if type lags
+
+  // Race readiness band (green/yellow/orange/red)
+  const band = (race?.readiness_band ?? "red").toLowerCase();
   const panel = bandPanel(band);
 
   // ---- Actionables (score-driven, not metric soup) ----
@@ -86,16 +91,16 @@ export default async function FitnessPage() {
   const mileage30Needs = drivers.some((d) => d.toLowerCase().includes("30d mileage needs"));
   const longRunNotReady = drivers.some((d) => d.toLowerCase().includes("long run not"));
 
-  if (runs7dBelow) actionables.push("Hit 5 runs in the next 7 days (no excuses, just logistics).");
-  if (strength7dBelow) actionables.push("Get 4 strength sessions in the next 7 days (short sessions count).");
-  if (mileage30Needs) actionables.push("Raise 30-day average weekly mileage toward 26.2+ (add easy volume).");
-  if (longRunNotReady) actionables.push("In the next 30 days: complete a long run that meets race demand (13.1 mi OR your predicted race duration).");
+  if (runs7dBelow) actionables.push("Hit 5 runs in the next 7 days (logistics > motivation).");
+  if (strength7dBelow) actionables.push("Get 4 strength sessions in the next 7 days (short counts).");
+  if (mileage30Needs) actionables.push("Raise 30-day avg weekly mileage toward 26.2+ (add easy volume).");
+  if (longRunNotReady)
+    actionables.push("Within 30 days: long run meets race demand (13.1 mi OR predicted race duration).");
 
-  // Always include your “≤2 days without a run” rule as a behavioral guardrail
+  // Behavior guardrail: ≤2 days without a run
   const daysSinceRun = consistency?.days_since_last_run ?? null;
   if ((daysSinceRun ?? 0) >= 3) actionables.unshift("You broke the 2-day gap rule: do an easy run today.");
 
-  // Trim to top 3, but ensure *something* shows
   const topActions = uniqTop(
     actionables.length
       ? actionables
@@ -126,7 +131,13 @@ export default async function FitnessPage() {
       </header>
 
       {/* Top row */}
-      <section style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+      <section
+        style={{
+          display: "grid",
+          gap: 12,
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+        }}
+      >
         {/* Race Readiness */}
         <div className="card" style={{ background: panel.bg, borderColor: panel.border }}>
           <div className="card-inner">
@@ -143,7 +154,7 @@ export default async function FitnessPage() {
                   border: `1px solid ${panel.border}`,
                   background: "rgba(0,0,0,0.10)",
                   fontSize: 12,
-                  fontWeight: 800,
+                  fontWeight: 850,
                   letterSpacing: 0.2,
                 }}
               >
@@ -162,7 +173,7 @@ export default async function FitnessPage() {
 
             <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
               {topActions.map((a, idx) => (
-                <div key={idx} style={{ fontSize: 13, fontWeight: 700 }}>
+                <div key={idx} style={{ fontSize: 13, fontWeight: 750 }}>
                   • {a}
                 </div>
               ))}
@@ -195,18 +206,19 @@ export default async function FitnessPage() {
             </div>
 
             <div className="card-muted" style={{ marginTop: 10, fontSize: 13 }}>
-              Sleep: {gate?.sleep_score ?? "—"} • RHR Δ: {fmt1(gate?.rhr_delta)} • Age: {gate?.data_age_hours ?? "—"}h
+              Sleep: {gate?.sleep_score ?? "—"} • RHR Δ: {fmt1(gate?.rhr_delta)} • Age:{" "}
+              {gate?.data_age_hours ?? "—"}h
             </div>
           </div>
         </div>
       </section>
 
-      {/* Recommendation */}
+      {/* Next Action */}
       <section style={{ marginTop: 14 }}>
         <div className="card">
           <div className="card-inner">
             <div className="card-title">Next Action</div>
-            <div style={{ marginTop: 10, fontSize: 18, fontWeight: 800 }}>{reco}</div>
+            <div style={{ marginTop: 10, fontSize: 18, fontWeight: 850 }}>{reco}</div>
             <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
               ≤2-day rule: <strong>{consistency?.within_2_day_rule ? "holding" : "broken"}</strong> • Last run:{" "}
               {fmtDate(consistency?.last_run_date)}
@@ -216,8 +228,54 @@ export default async function FitnessPage() {
         </div>
       </section>
 
+      {/* Add-on cards: Avg Weekly Miles + Steps */}
+      <section
+        style={{
+          marginTop: 14,
+          display: "grid",
+          gap: 12,
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+        }}
+      >
+        {/* Avg Weekly Miles (30d) */}
+        <div className="card">
+          <div className="card-inner">
+            <div className="card-title">Avg Weekly Miles</div>
+            <div style={{ marginTop: 10, fontSize: 28, fontWeight: 950 }}>
+              {fmt1(race?.avg_weekly_miles_30d)} mi/wk
+            </div>
+            <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
+              Miles (30d): {fmt1(race?.miles_30d)} mi
+            </div>
+          </div>
+        </div>
+
+        {/* Steps (7d / 30d) */}
+        <div className="card">
+          <div className="card-inner">
+            <div className="card-title">Steps</div>
+            <div style={{ marginTop: 10, fontSize: 28, fontWeight: 950 }}>
+              {fmt0(steps?.steps_avg_7d)} / day
+            </div>
+            <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
+              Weekly avg (7d)
+            </div>
+            <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
+              Monthly avg (30d): {fmt0(steps?.steps_avg_30d)} / day
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Long Run + Consistency */}
-      <section style={{ marginTop: 14, display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+      <section
+        style={{
+          marginTop: 14,
+          display: "grid",
+          gap: 12,
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+        }}
+      >
         {/* Long Run */}
         <div className="card">
           <div className="card-inner">
@@ -232,10 +290,8 @@ export default async function FitnessPage() {
 
             <div className="card-muted" style={{ marginTop: 8, fontSize: 13 }}>
               Strongest (30d):{" "}
-              {(longrun as any)?.max_long_min_30d
-                ? `${fmt0((longrun as any)?.max_long_min_30d)} min`
-                : "—"}{" "}
-              • {fmtDate((longrun as any)?.max_long_day_30d)}
+              {longrun?.max_long_min_30d ? `${fmt0(longrun.max_long_min_30d)} min` : "—"} •{" "}
+              {fmtDate(longrun?.max_long_day_30d)}
             </div>
 
             <div className="card-muted" style={{ marginTop: 8, fontSize: 13 }}>

@@ -136,6 +136,8 @@ export type RaceReadinessRow = {
 
   // NEW: race-readiness color scale (green/yellow/orange/red)
   readiness_band: "green" | "yellow" | "orange" | "red" | null;
+  miles_30d: number | null;
+  avg_weekly_miles_30d: number | null;
 
   // 7d rollups (kept names for UI compatibility)
   runs_this_week: number | null;
@@ -146,13 +148,30 @@ export type RaceReadinessRow = {
 
   // NEW (optional, but your page tries to display them)
   miles_7d: number | null;
-  miles_30d: number | null;
-  avg_weekly_miles_30d: number | null;
   est_race_minutes: number | null;
 
   readiness_score: number | null;
   drivers: string[] | null;
 };
+
+export type StepsSummaryRow = {
+  user_id: string;
+  steps_avg_7d: number | null;
+  steps_avg_30d: number | null;
+};
+
+export async function fetchStepsSummary(userId: string) {
+  const supabase = supabaseClient();
+
+  const { data, error } = await supabase
+    .from("v_steps_summary")
+    .select("*")
+    .eq("user_id", userId)
+    .limit(1);
+
+  if (error) throw new Error(`v_steps_summary: ${error.message}`);
+  return oneRow<StepsSummaryRow>(data);
+}
 
 export async function fetchRaceReadiness(userId: string) {
   const supabase = supabaseClient();
