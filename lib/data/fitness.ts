@@ -76,6 +76,10 @@ export type LongRunProgressionRow = {
   delta_min: number | null;
   next_target_min: number | null;
   jumped_too_fast: boolean | null;
+
+  // NEW: strongest long run in last 30 days
+  max_long_day_30d: string | null;
+  max_long_min_30d: number | null;
 };
 
 export async function fetchLongRunProgression(userId: string) {
