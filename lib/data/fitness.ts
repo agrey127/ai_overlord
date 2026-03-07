@@ -12,7 +12,12 @@ export type ReadinessStatusRow = {
   as_of_day: string | null;
   as_of_updated_at: string | null;
   data_age_hours: number | null;
-
+  sleep_avg_3d: number | null;
+  sleep_delta_3v30: number | null;
+  rhr_avg_3d: number | null;
+  rhr_delta_3v30: number | null;
+  run_minutes_2d: number | null;
+  had_hard_day_2d: boolean | null;
   sleep_score: number | null;
   resting_heart_rate: number | null;
   rhr_avg_30d: number | null;

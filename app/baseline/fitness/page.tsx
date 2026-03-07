@@ -65,6 +65,27 @@ function uniqTop(items: string[], limit = 3) {
   return out;
 }
 
+function trendMeta(current: number | null | undefined, baseline: number | null | undefined, flatThreshold = 0.25) {
+  const c = typeof current === "number" && Number.isFinite(current) ? current : null;
+  const b = typeof baseline === "number" && Number.isFinite(baseline) ? baseline : null;
+
+  if (c == null || b == null) {
+    return { symbol: "—", color: "rgba(148,163,184,0.8)" };
+  }
+
+  const diff = c - b;
+
+  if (Math.abs(diff) < flatThreshold) {
+    return { symbol: "→", color: "rgba(148,163,184,0.9)" };
+  }
+
+  if (diff > 0) {
+    return { symbol: "↑", color: "rgba(34,197,94,0.92)" };
+  }
+
+  return { symbol: "↓", color: "rgba(239,68,68,0.92)" };
+}
+
 export default async function FitnessPage() {
   const [gate, consistency, longrun, balance, race, steps] = await Promise.all([
     fetchReadinessStatus(USER_ID),
@@ -75,14 +96,10 @@ export default async function FitnessPage() {
     fetchStepsSummary(USER_ID),
   ]);
 
-  // Daily readiness gate (green/yellow/red/gray)
   const gateColor = (gate?.readiness_color ?? "gray").toLowerCase();
-
-  // Race readiness band (green/yellow/orange/red)
   const band = (race?.readiness_band ?? "red").toLowerCase();
   const panel = bandPanel(band);
 
-  // ---- Actionables (score-driven, not metric soup) ----
   const drivers = (race?.drivers ?? []).map((s) => (s ?? "").toString());
   const actionables: string[] = [];
 
@@ -91,13 +108,11 @@ export default async function FitnessPage() {
   const mileage30Needs = drivers.some((d) => d.toLowerCase().includes("30d mileage needs"));
   const longRunNotReady = drivers.some((d) => d.toLowerCase().includes("long run not"));
 
-  if (runs7dBelow) actionables.push("Hit 5 runs in the next 7 days (logistics > motivation).");
-  if (strength7dBelow) actionables.push("Get 4 strength sessions in the next 7 days (short counts).");
-  if (mileage30Needs) actionables.push("Raise 30-day avg weekly mileage toward 26.2+ (add easy volume).");
-  if (longRunNotReady)
-    actionables.push("Within 30 days: long run meets race demand (13.1 mi OR predicted race duration).");
+  if (runs7dBelow) actionables.push("Hit 5 runs in the next 7 days.");
+  if (strength7dBelow) actionables.push("Get 4 strength sessions in the next 7 days.");
+  if (mileage30Needs) actionables.push("Raise 30-day avg weekly mileage toward 26.2+.");
+  if (longRunNotReady) actionables.push("Complete a long run that meets race demand.");
 
-  // Behavior guardrail: ≤2 days without a run
   const daysSinceRun = consistency?.days_since_last_run ?? null;
   if ((daysSinceRun ?? 0) >= 3) actionables.unshift("You broke the 2-day gap rule: do an easy run today.");
 
@@ -105,14 +120,13 @@ export default async function FitnessPage() {
     actionables.length
       ? actionables
       : [
-          "Keep the 2 hard-day ceiling. Make the rest boring-easy volume.",
-          "Long run every 7–10 days. Don’t skip the cornerstone.",
-          "Sleep/RHR gate decides intensity, not your mood.",
+          "Keep the 2 hard-day ceiling.",
+          "Long run every 7–10 days.",
+          "Use workout readiness to decide intensity.",
         ],
     3
   );
 
-  // ---- Next Action (single sentence) ----
   const overreach = !!balance?.overreach_risk;
   let reco = "Execute the plan: easy volume + keep strength on track.";
   if (gateColor === "red" || overreach) reco = "Recovery day: walk + mobility. No intensity.";
@@ -120,9 +134,13 @@ export default async function FitnessPage() {
   else if ((daysSinceRun ?? 0) >= 3) reco = "Easy run today (30–45 min). Re-establish rhythm.";
   else if ((race?.readiness_score ?? 0) < 75) reco = "Build day: easy run + strength. Consistency beats hero days.";
 
+  const milesTrend = trendMeta(race?.miles_7d, race?.avg_weekly_miles_30d, 0.5);
+  const stepsTrend = trendMeta(steps?.steps_avg_7d, steps?.steps_avg_30d, 150);
+  const sleepTrend = trendMeta(gate?.sleep_avg_3d, gate?.sleep_score ? gate.sleep_score - (gate?.sleep_delta_3v30 ?? 0) : null, 1);
+  const rhrTrend = trendMeta(gate?.rhr_avg_3d, gate?.rhr_avg_3d != null && gate?.rhr_delta_3v30 != null ? gate.rhr_avg_3d - gate.rhr_delta_3v30 : null, 0.5);
+
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: "20px 16px 90px" }}>
-      {/* Header */}
       <header style={{ marginBottom: 18 }}>
         <h1 style={{ margin: 0 }}>Fitness</h1>
         <p className="card-muted" style={{ marginTop: 6 }}>
@@ -130,7 +148,6 @@ export default async function FitnessPage() {
         </p>
       </header>
 
-      {/* Top row */}
       <section
         style={{
           display: "grid",
@@ -148,18 +165,22 @@ export default async function FitnessPage() {
                   marginLeft: "auto",
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 8,
-                  padding: "6px 10px",
+                  justifyContent: "center",
+                  width: 28,
+                  height: 28,
                   borderRadius: 999,
                   border: `1px solid ${panel.border}`,
                   background: "rgba(0,0,0,0.10)",
-                  fontSize: 12,
-                  fontWeight: 850,
-                  letterSpacing: 0.2,
                 }}
               >
-                <span style={{ width: 9, height: 9, borderRadius: 999, background: dotColor(band) }} />
-                {band.toUpperCase()}
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 999,
+                    background: dotColor(band),
+                  }}
+                />
               </div>
             </div>
 
@@ -181,10 +202,10 @@ export default async function FitnessPage() {
           </div>
         </div>
 
-        {/* Daily Readiness Gate (compact) */}
+        {/* Workout Readiness */}
         <div className="card">
           <div className="card-inner">
-            <div className="card-title">Readiness Gate</div>
+            <div className="card-title">Workout Readiness</div>
 
             <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
               <div
@@ -205,15 +226,38 @@ export default async function FitnessPage() {
               </div>
             </div>
 
-            <div className="card-muted" style={{ marginTop: 10, fontSize: 13 }}>
-              Sleep: {gate?.sleep_score ?? "—"} • RHR Δ: {fmt1(gate?.rhr_delta)} • Age:{" "}
-              {gate?.data_age_hours ?? "—"}h
+            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+              <div className="card-muted" style={{ fontSize: 13, display: "flex", justifyContent: "space-between", gap: 10 }}>
+                <span>Sleep score: {gate?.sleep_score ?? "—"}</span>
+                <span style={{ color: sleepTrend.color, fontWeight: 800 }}>{sleepTrend.symbol}</span>
+              </div>
+
+              <div className="card-muted" style={{ fontSize: 13 }}>
+                Sleep 3d avg: {fmt1(gate?.sleep_avg_3d)} • Δ vs 30d: {fmt1(gate?.sleep_delta_3v30)}
+              </div>
+
+              <div className="card-muted" style={{ fontSize: 13, display: "flex", justifyContent: "space-between", gap: 10 }}>
+                <span>RHR Δ vs 30d: {fmt1(gate?.rhr_delta)}</span>
+                <span style={{ color: rhrTrend.color, fontWeight: 800 }}>{rhrTrend.symbol}</span>
+              </div>
+
+              <div className="card-muted" style={{ fontSize: 13 }}>
+                RHR 3d avg: {fmt1(gate?.rhr_avg_3d)} • Δ vs 30d: {fmt1(gate?.rhr_delta_3v30)}
+              </div>
+
+              <div className="card-muted" style={{ fontSize: 13 }}>
+                Run load (2d): {fmt0(gate?.run_minutes_2d)} min
+                {gate?.had_hard_day_2d ? " • hard day in last 48h" : ""}
+              </div>
+
+              <div className="card-muted" style={{ fontSize: 13 }}>
+                Data age: {gate?.data_age_hours ?? "—"}h
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Next Action */}
       <section style={{ marginTop: 14 }}>
         <div className="card">
           <div className="card-inner">
@@ -228,7 +272,6 @@ export default async function FitnessPage() {
         </div>
       </section>
 
-      {/* Add-on cards: Avg Weekly Miles + Steps */}
       <section
         style={{
           marginTop: 14,
@@ -237,29 +280,62 @@ export default async function FitnessPage() {
           gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
         }}
       >
-        {/* Avg Weekly Miles (30d) */}
+        {/* Avg Weekly Miles */}
         <div className="card">
           <div className="card-inner">
-            <div className="card-title">Avg Weekly Miles</div>
-            <div style={{ marginTop: 10, fontSize: 28, fontWeight: 950 }}>
-              {fmt1(race?.avg_weekly_miles_30d)} mi/wk
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <div className="card-title">Avg Weekly Miles</div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: milesTrend.color }}>
+                {milesTrend.symbol}
+              </div>
             </div>
+
+            <div style={{ marginTop: 10, fontSize: 28, fontWeight: 950 }}>
+              {fmt1(race?.miles_7d)} mi
+            </div>
+
             <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
-              Miles (30d): {fmt1(race?.miles_30d)} mi
+              Current 7d
+            </div>
+
+            <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
+              30d avg weekly: {fmt1(race?.avg_weekly_miles_30d)} mi
             </div>
           </div>
         </div>
 
-        {/* Steps (7d / 30d) */}
+        {/* Steps */}
         <div className="card">
           <div className="card-inner">
-            <div className="card-title">Steps</div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <div className="card-title">Steps</div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: stepsTrend.color }}>
+                {stepsTrend.symbol}
+              </div>
+            </div>
+
             <div style={{ marginTop: 10, fontSize: 28, fontWeight: 950 }}>
               {fmt0(steps?.steps_avg_7d)} / day
             </div>
+
             <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
               Weekly avg (7d)
             </div>
+
             <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
               Monthly avg (30d): {fmt0(steps?.steps_avg_30d)} / day
             </div>
@@ -267,7 +343,6 @@ export default async function FitnessPage() {
         </div>
       </section>
 
-      {/* Long Run + Consistency */}
       <section
         style={{
           marginTop: 14,
