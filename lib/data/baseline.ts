@@ -1,5 +1,5 @@
 import { supabaseClient } from "@/lib/supabase/client";
-import type { TodayNutritionHomeRow, CashflowProjection7dRow } from "@/lib/contracts/dashboard";
+import type { TodayNutritionHomeRow, CashflowProjection7dRow, WeightTrends7dRow } from "@/lib/contracts/dashboard";
 
 export type LifeSignal = {
   id: string;
@@ -31,6 +31,8 @@ export type MicroTrendsHomeRow = {
 
   sleep_score_avg_7d: number | null;
   sleep_score_delta_vs_prev_7d: number | null;
+<<<<<<< ours
+<<<<<<< ours
 
   weight_avg_7d?: number | null;
   weight_avg_prev_7d?: number | null;
@@ -39,6 +41,10 @@ export type MicroTrendsHomeRow = {
   avg_weight_7d?: number | null;
   weight_7d_avg?: number | null;
   avg_weight_prev_7d?: number | null;
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
   min_projected_balance_30d: number | null;
   min_projected_balance_day_30d: string | null;
 
@@ -94,6 +100,20 @@ export async function fetchCashflowProjection7d() {
     .maybeSingle<CashflowProjection7dRow>();
 
   if (error) throw new Error(`v_cashflow_projection_7d: ${error.message}`);
+  return data;
+}
+
+export async function fetchWeightTrends7d(userId = "agrey127@gmail.com") {
+  const supabase = supabaseClient();
+
+  const { data, error } = await supabase
+    .from("v_weight_trends_7d")
+    .select("user_id, weight_avg_7d, prev_weight_avg_7d")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle<WeightTrends7dRow>();
+
+  if (error) throw new Error(`v_weight_trends_7d: ${error.message}`);
   return data;
 }
 

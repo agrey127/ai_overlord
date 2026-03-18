@@ -14,3 +14,9 @@ export type CashflowProjection7dRow = {
   current_balance: number | null;
   projected_balance_7d: number | null;
 };
+
+export type WeightTrends7dRow = {
+  user_id: string | null;
+  weight_avg_7d: number | null;
+  prev_weight_avg_7d: number | null;
+};
