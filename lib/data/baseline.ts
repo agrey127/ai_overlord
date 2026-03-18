@@ -11,7 +11,7 @@ export type LifeSignal = {
   message: string;
   facts: string | null;
   recommendation: string | null;
-  evidence: any;
+  evidence: unknown;
   detected_at: string | null; // <- fix
 };
 
@@ -32,6 +32,13 @@ export type MicroTrendsHomeRow = {
   sleep_score_avg_7d: number | null;
   sleep_score_delta_vs_prev_7d: number | null;
 
+  weight_avg_7d?: number | null;
+  weight_avg_prev_7d?: number | null;
+  prev_weight_avg_7d?: number | null;
+  previous_weight_avg_7d?: number | null;
+  avg_weight_7d?: number | null;
+  weight_7d_avg?: number | null;
+  avg_weight_prev_7d?: number | null;
   min_projected_balance_30d: number | null;
   min_projected_balance_day_30d: string | null;
 
@@ -97,25 +104,7 @@ export async function fetchMicroTrendsHome(userId?: string) {
 
   const { data, error } = await supabase
     .from("v_micro_trends_home")
-    .select(
-      [
-        "user_id",
-        "calories_avg_7d",
-        "calories_delta_vs_prev_7d",
-        "protein_avg_7d",
-        "protein_delta_vs_prev_7d",
-        "nutrition_days_logged_7d",
-        "training_minutes_this_week",
-        "training_minutes_delta_vs_last_week",
-        "training_days_this_week",
-        "sleep_score_avg_7d",
-        "sleep_score_delta_vs_prev_7d",
-        "min_projected_balance_30d",
-        "min_projected_balance_day_30d",
-        "net_worth_delta_30d",
-        "net_worth_last_snapshot_day",
-      ].join(",")
-    )
+    .select("*")
     .eq("user_id", uid)
     .maybeSingle<MicroTrendsHomeRow>();
 
