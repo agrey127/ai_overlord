@@ -1,6 +1,5 @@
 import {
   fetchTodayNutritionHome,
-  fetchCashflowProjection7d,
   fetchActiveLifeSignals,
   fetchMicroTrendsHome,
 } from "@/lib/data/baseline";
@@ -114,7 +113,6 @@ export const revalidate = 0;
 
 export default async function BaselineHomePage() {
   const nutrition = await fetchTodayNutritionHome();
-  const cashflow = await fetchCashflowProjection7d();
   const micro = await fetchMicroTrendsHome();
 
   const caloriesConsumed = safeNum(nutrition?.calories);
@@ -127,8 +125,14 @@ export default async function BaselineHomePage() {
   const proteinRemaining =
     nutrition?.protein_remaining ?? (proteinGoal - proteinConsumed);
 
-  const currentBal = safeNum(cashflow?.current_balance);
-  const projectedBal = safeNum(cashflow?.projected_balance_7d);
+  const weightAvg7d = micro?.weight_avg_7d ?? micro?.avg_weight_7d ?? micro?.weight_7d_avg ?? null;
+
+  const prevWeightAvg7d =
+    micro?.weight_avg_prev_7d ??
+    micro?.prev_weight_avg_7d ??
+    micro?.previous_weight_avg_7d ??
+    micro?.avg_weight_prev_7d ??
+    null;
 
   const signals = await fetchActiveLifeSignals();
   const topSignal = signals[0] ?? null;
@@ -199,20 +203,20 @@ export default async function BaselineHomePage() {
             </div>
           </div>
 
-          {/* Cashflow */}
+          {/* Weight */}
           <div className="card">
             <div className="card-inner">
-              <div className="card-title">Cashflow</div>
+              <div className="card-title">Weight</div>
               <div className="stat-top-row">
                 <div className="stat-big">
-                  {fmtMoney(projectedBal)}
+                  {fmt(weightAvg7d, 1)} lb
                 </div>
                 <div className="card-muted">
-                  Projected (7d)
+                  Avg (7d)
                 </div>
               </div>
               <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
-                {fmtMoney(currentBal)} current
+                {fmt(prevWeightAvg7d, 1)} lb previous avg (7d)
               </div>
             </div>
           </div>
