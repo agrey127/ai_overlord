@@ -31,26 +31,24 @@ export type MicroTrendsHomeRow = {
 
   sleep_score_avg_7d: number | null;
   sleep_score_delta_vs_prev_7d: number | null;
-<<<<<<< ours
-<<<<<<< ours
-
-  weight_avg_7d?: number | null;
-  weight_avg_prev_7d?: number | null;
-  prev_weight_avg_7d?: number | null;
-  previous_weight_avg_7d?: number | null;
-  avg_weight_7d?: number | null;
-  weight_7d_avg?: number | null;
-  avg_weight_prev_7d?: number | null;
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
   min_projected_balance_30d: number | null;
   min_projected_balance_day_30d: string | null;
 
   net_worth_delta_30d: number | null;
   net_worth_last_snapshot_day: string | null;
 };
+
+type WeightRolling7dRow = {
+  user_id: string | null;
+  day: string | null;
+  weight_7d_avg: number | string | null;
+};
+
+function toFiniteNumber(value: number | string | null | undefined) {
+  if (value == null) return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
 
 
 export async function fetchActiveLifeSignals(userId = "agrey127@gmail.com") {
@@ -114,7 +112,46 @@ export async function fetchWeightTrends7d(userId = "agrey127@gmail.com") {
     .maybeSingle<WeightTrends7dRow>();
 
   if (error) throw new Error(`v_weight_trends_7d: ${error.message}`);
-  return data;
+  if (data && (data.weight_avg_7d != null || data.prev_weight_avg_7d != null)) {
+    return data;
+  }
+
+  const { data: rollingRows, error: rollingError } = await supabase
+    .from("v_weight_rolling_7d")
+    .select("user_id, day, weight_7d_avg")
+    .eq("user_id", userId)
+    .order("day", { ascending: false })
+    .limit(14);
+
+  if (rollingError) throw new Error(`v_weight_rolling_7d: ${rollingError.message}`);
+
+  const rows = (rollingRows ?? []) as WeightRolling7dRow[];
+  const latest = rows.find((row) => toFiniteNumber(row.weight_7d_avg) != null);
+  if (!latest) return data;
+
+  const latestDay = latest.day ? new Date(`${latest.day}T00:00:00`) : null;
+  const latestAvg = toFiniteNumber(latest.weight_7d_avg);
+  if (!latestDay || latestAvg == null) {
+    return {
+      user_id: latest.user_id ?? userId,
+      weight_avg_7d: latestAvg,
+      prev_weight_avg_7d: null,
+    };
+  }
+
+  const targetTime = latestDay.getTime() - (7 * 24 * 60 * 60 * 1000);
+  const prev = rows.find((row) => {
+    if (!row.day) return false;
+    const avg = toFiniteNumber(row.weight_7d_avg);
+    if (avg == null) return false;
+    return new Date(`${row.day}T00:00:00`).getTime() <= targetTime;
+  });
+
+  return {
+    user_id: latest.user_id ?? userId,
+    weight_avg_7d: latestAvg,
+    prev_weight_avg_7d: prev ? toFiniteNumber(prev.weight_7d_avg) : null,
+  };
 }
 
 

@@ -1,13 +1,6 @@
 import {
   fetchTodayNutritionHome,
-<<<<<<< ours
-<<<<<<< ours
-=======
   fetchWeightTrends7d,
->>>>>>> theirs
-=======
-  fetchWeightTrends7d,
->>>>>>> theirs
   fetchActiveLifeSignals,
   fetchMicroTrendsHome,
 } from "@/lib/data/baseline";
@@ -121,14 +114,7 @@ export const revalidate = 0;
 
 export default async function BaselineHomePage() {
   const nutrition = await fetchTodayNutritionHome();
-<<<<<<< ours
-<<<<<<< ours
-=======
   const weightTrends = await fetchWeightTrends7d();
->>>>>>> theirs
-=======
-  const weightTrends = await fetchWeightTrends7d();
->>>>>>> theirs
   const micro = await fetchMicroTrendsHome();
 
   const caloriesConsumed = safeNum(nutrition?.calories);
@@ -141,24 +127,8 @@ export default async function BaselineHomePage() {
   const proteinRemaining =
     nutrition?.protein_remaining ?? (proteinGoal - proteinConsumed);
 
-<<<<<<< ours
-<<<<<<< ours
-  const weightAvg7d = micro?.weight_avg_7d ?? micro?.avg_weight_7d ?? micro?.weight_7d_avg ?? null;
-
-  const prevWeightAvg7d =
-    micro?.weight_avg_prev_7d ??
-    micro?.prev_weight_avg_7d ??
-    micro?.previous_weight_avg_7d ??
-    micro?.avg_weight_prev_7d ??
-    null;
-=======
   const weightAvg7d = weightTrends?.weight_avg_7d ?? null;
   const prevWeightAvg7d = weightTrends?.prev_weight_avg_7d ?? null;
->>>>>>> theirs
-=======
-  const weightAvg7d = weightTrends?.weight_avg_7d ?? null;
-  const prevWeightAvg7d = weightTrends?.prev_weight_avg_7d ?? null;
->>>>>>> theirs
 
   const signals = await fetchActiveLifeSignals();
   const topSignal = signals[0] ?? null;
