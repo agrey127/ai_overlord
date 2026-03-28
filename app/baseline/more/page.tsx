@@ -9,6 +9,11 @@ type Module = {
 
 const modules: Module[] = [
   {
+    title: "Nutrition",
+    description: "Daily macro split + today's food log.",
+    href: "/baseline/more/nutrition",
+  },
+  {
     title: "Relationships",
     description: "Anchors, cadence, presence gaps.",
     href: "/baseline/more/relationships",
