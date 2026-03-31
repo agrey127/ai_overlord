@@ -31,7 +31,22 @@ function toNumber(value: number | null | undefined) {
 
 export async function fetchTodayFoodLog() {
   const supabase = supabaseClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const indianapolisDateParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Indiana/Indianapolis",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const year = indianapolisDateParts.find((part) => part.type === "year")?.value;
+  const month = indianapolisDateParts.find((part) => part.type === "month")?.value;
+  const day = indianapolisDateParts.find((part) => part.type === "day")?.value;
+
+  if (!year || !month || !day) {
+    throw new Error("Unable to determine current date for America/Indiana/Indianapolis");
+  }
+
+  const today = `${year}-${month}-${day}`;
 
   const { data, error } = await supabase
     .from("meal_logs")
