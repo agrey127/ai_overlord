@@ -14,6 +14,12 @@ const modules: Module[] = [
     href: "/baseline/more/nutrition",
   },
   {
+    title: "Manual Fitness",
+    description: "Backfill sleep score, RHR, and steps.",
+    href: "/baseline/more/manual-fitness",
+    accent: true,
+  },
+  {
     title: "Relationships",
     description: "Anchors, cadence, presence gaps.",
     href: "/baseline/more/relationships",
