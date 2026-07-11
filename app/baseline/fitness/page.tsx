@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
+import Link from "next/link";
 import {
   fetchReadinessStatus,
   fetchRunConsistency,
@@ -312,7 +313,7 @@ export default async function FitnessPage() {
         </div>
 
         {/* Steps */}
-        <div className="card">
+        <Link href="/baseline/fitness/steps" className="card" style={{ textDecoration: "none", color: "inherit" }}>
           <div className="card-inner">
             <div
               style={{
@@ -340,7 +341,7 @@ export default async function FitnessPage() {
               Monthly avg (30d): {fmt0(steps?.steps_avg_30d)} / day
             </div>
           </div>
-        </div>
+        </Link>
       </section>
 
       <section

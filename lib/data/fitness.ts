@@ -169,6 +169,15 @@ export type StepsSummaryRow = {
   steps_avg_30d: number | null;
 };
 
+export type StepsDailyRow = {
+  user_id: string;
+  day: string;
+  steps: number | null;
+  source: string | null;
+  is_final: boolean | null;
+  updated_at: string | null;
+};
+
 export async function fetchStepsSummary(userId: string) {
   const supabase = supabaseClient();
 
@@ -180,6 +189,21 @@ export async function fetchStepsSummary(userId: string) {
 
   if (error) throw new Error(`v_steps_summary: ${error.message}`);
   return oneRow<StepsSummaryRow>(data);
+}
+
+export async function fetchStepsLast14Days(userId: string, endDay: string, startDay: string) {
+  const supabase = supabaseClient();
+
+  const { data, error } = await supabase
+    .from("fitness_daily")
+    .select("user_id, day, steps, source, is_final, updated_at")
+    .eq("user_id", userId)
+    .gte("day", startDay)
+    .lte("day", endDay)
+    .order("day", { ascending: false });
+
+  if (error) throw new Error(`fitness_daily steps: ${error.message}`);
+  return (data ?? []) as StepsDailyRow[];
 }
 
 export async function fetchRaceReadiness(userId: string) {
