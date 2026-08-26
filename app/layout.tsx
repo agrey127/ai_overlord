@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Life OS",
-  description: "Baseline Control System",
+  title: "Baseline",
+  description: "A private, reusable life and training assistant.",
 };
 
 export default function RootLayout({

@@ -36,6 +36,7 @@ body {
 body {
   background: var(--bg);
   color: var(--text);
+  margin: 0;
 }
 
 /* ===== Background Stack (desktop + mobile safe) ===== */
@@ -226,6 +227,17 @@ body {
 .nav-item-active .nav-pill {
   background: linear-gradient(90deg, var(--p1), var(--p2), var(--p3));
   box-shadow: 0 0 0 4px rgba(124,58,237,0.10);
+}
+
+.nav-icon { width: 17px; height: 17px; flex: 0 0 auto; }
+.nav-item-active .nav-icon { color: var(--p3); }
+button, input { font: inherit; }
+
+@media (max-width: 640px) {
+  .bottom-nav-wrap { padding: 7px 8px calc(7px + env(safe-area-inset-bottom)); }
+  .bottom-nav-inner { gap: 1px; padding: 6px; }
+  .nav-item { flex-direction: column; gap: 3px; padding: 7px 2px 6px; font-size: 9px; }
+  .nav-icon { width: 16px; height: 16px; }
 }
 
 /* =========================
