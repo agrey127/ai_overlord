@@ -274,6 +274,50 @@ export async function startTodayWorkout(supabase: SupabaseClient, userId: string
   return getWorkoutById(supabase, userId, workout.id);
 }
 
+export type ReplacementExercise = {
+  exercise_name: string;
+  target_sets: number;
+  target_reps: number;
+  rest_seconds?: number | null;
+  notes?: string | null;
+};
+
+export async function replaceTodayWorkout(
+  supabase: SupabaseClient,
+  userId: string,
+  input: {
+    name: string;
+    estimated_minutes?: number | null;
+    exercises: ReplacementExercise[];
+    confirm_destructive: boolean;
+  },
+) {
+  const currentWorkout = await ensureTodayWorkout(supabase, userId);
+  const { data, error } = await supabase.rpc("replace_today_strength_workout", {
+    p_user_id: userId,
+    p_plan_id: currentWorkout.id,
+    p_name: input.name,
+    p_estimated_minutes: input.estimated_minutes ?? currentWorkout.estimated_minutes,
+    p_exercises: input.exercises,
+    p_confirm_destructive: input.confirm_destructive,
+  });
+  assertResult(error, "replace today's workout");
+  if (!data || typeof data !== "object") {
+    throw new Error("replace today's workout: invalid database response");
+  }
+
+  const result = data as {
+    updated: boolean;
+    confirmation_required: boolean;
+    reason?: string;
+    current_status?: string;
+    logged_set_count?: number;
+    removed_logged_sets?: number;
+  };
+  if (!result.updated) return { ...result, current_workout: currentWorkout };
+  return { ...result, workout: await getWorkoutById(supabase, userId, currentWorkout.id) };
+}
+
 async function findExercise(
   supabase: SupabaseClient,
   userId: string,

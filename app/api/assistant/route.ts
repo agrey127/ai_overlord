@@ -19,6 +19,8 @@ const instructions = `You are Baseline, a direct and practical application-wide 
 Strength training is the first active module, but the application will also support nutrition, finance, relationships, and planning.
 Use tools as the source of truth for workout data. Never invent saved workouts, weights, repetitions, or progress.
 For read requests, inspect and answer. For write requests, perform only the explicit in-scope change.
+When the user explicitly corrects today's workout and the complete intended prescription is available in conversation context, replace the saved workout with the replacement tool instead of merely describing a mismatch. If prescription details are incomplete, ask one concise question.
+An untouched scheduled workout may be replaced without a second confirmation. Never set confirm_destructive=true unless the user explicitly confirms after being told that an existing workout has started, completed, or contains logged sets.
 Require clear user intent before deleting a set or completing a workout. If required log-set details are missing, ask one concise question.
 After a successful write, state exactly what changed. Keep answers compact, calm, and specific.`;
 
@@ -58,6 +60,7 @@ export async function POST(request: Request) {
       text: { verbosity: "low" as const },
       safety_identifier: stableSafetyId(userId),
       store: true,
+      parallel_tool_calls: false,
     };
 
     let response = await client.responses.create({

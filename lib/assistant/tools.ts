@@ -6,6 +6,7 @@ import {
   ensureTodayWorkout,
   getStrengthProgress,
   logStrengthSet,
+  replaceTodayWorkout,
   startTodayWorkout,
   updateStrengthSet,
 } from "@/lib/assistant/repository";
@@ -24,6 +25,39 @@ export const assistantTools: FunctionTool[] = [
     description: "Mark today's scheduled strength workout as in progress. Use only when the user asks to start it.",
     strict: true,
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  {
+    type: "function",
+    name: "replace_today_workout",
+    description: "Replace today's saved workout when the user explicitly corrects or changes the schedule and a complete intended exercise prescription is available from the conversation. An untouched scheduled workout can be replaced immediately. If it has started or contains sets, call with confirm_destructive=false first and ask for confirmation when the result requires it; use true only after explicit confirmation. Never invent missing exercises, sets, or reps.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        estimated_minutes: { type: ["integer", "null"], minimum: 1, maximum: 360 },
+        exercises: {
+          type: "array",
+          minItems: 1,
+          maxItems: 20,
+          items: {
+            type: "object",
+            properties: {
+              exercise_name: { type: "string" },
+              target_sets: { type: "integer", minimum: 1, maximum: 20 },
+              target_reps: { type: "integer", minimum: 1, maximum: 100 },
+              rest_seconds: { type: ["integer", "null"], minimum: 0, maximum: 1800 },
+              notes: { type: ["string", "null"] },
+            },
+            required: ["exercise_name", "target_sets", "target_reps", "rest_seconds", "notes"],
+            additionalProperties: false,
+          },
+        },
+        confirm_destructive: { type: "boolean" },
+      },
+      required: ["name", "estimated_minutes", "exercises", "confirm_destructive"],
+      additionalProperties: false,
+    },
   },
   {
     type: "function",
@@ -105,6 +139,24 @@ export async function runAssistantTool(
       return ensureTodayWorkout(supabase, userId);
     case "start_workout":
       return startTodayWorkout(supabase, userId);
+    case "replace_today_workout":
+      return replaceTodayWorkout(supabase, userId, {
+        name: String(args.name),
+        estimated_minutes: args.estimated_minutes == null ? null : Number(args.estimated_minutes),
+        exercises: Array.isArray(args.exercises)
+          ? args.exercises.map((item) => {
+              const exercise = item as ToolArguments;
+              return {
+                exercise_name: String(exercise.exercise_name),
+                target_sets: Number(exercise.target_sets),
+                target_reps: Number(exercise.target_reps),
+                rest_seconds: exercise.rest_seconds == null ? null : Number(exercise.rest_seconds),
+                notes: exercise.notes == null ? null : String(exercise.notes),
+              };
+            })
+          : [],
+        confirm_destructive: args.confirm_destructive === true,
+      });
     case "log_set":
       return logStrengthSet(supabase, userId, {
         exercise_name: String(args.exercise_name),
