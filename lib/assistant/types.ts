@@ -1,6 +1,7 @@
 export type AssistantDomain =
   | "general"
   | "strength"
+  | "running"
   | "nutrition"
   | "finance"
   | "relationships"
@@ -90,4 +91,12 @@ export type AssistantChatResponse = {
   conversationId: string;
   message: AssistantMessage;
   workout: StrengthWorkout;
+};
+
+export type AssistantThreadDomain = Extract<AssistantDomain, "strength" | "running" | "nutrition">;
+
+export type AssistantConversationCreateResponse = {
+  conversation: AssistantConversation;
+  messages: AssistantMessage[];
+  created: boolean;
 };

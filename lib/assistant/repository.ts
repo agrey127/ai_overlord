@@ -4,6 +4,7 @@ import type {
   ActivityDraft,
   ActivityType,
   AssistantConversation,
+  AssistantDomain,
   AssistantMessage,
   StrengthExercise,
   StrengthSet,
@@ -186,14 +187,32 @@ export async function createConversation(
   supabase: SupabaseClient,
   userId: string,
   title = "New conversation",
+  domain: AssistantDomain = "general",
 ) {
   const { data, error } = await supabase
     .from("assistant_conversations")
-    .insert({ user_id: userId, title, domain: "general" })
+    .insert({ user_id: userId, title, domain })
     .select("*")
     .single();
   assertResult(error, "create conversation");
   return data;
+}
+
+export async function getLatestConversationByDomain(
+  supabase: SupabaseClient,
+  userId: string,
+  domain: AssistantDomain,
+): Promise<AssistantConversation | null> {
+  const { data, error } = await supabase
+    .from("assistant_conversations")
+    .select("id,title,domain,updated_at")
+    .eq("user_id", userId)
+    .eq("domain", domain)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  assertResult(error, "find conversation");
+  return data as AssistantConversation | null;
 }
 
 export async function getConversation(

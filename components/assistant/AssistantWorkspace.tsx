@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
-import type { AssistantBootstrap, AssistantChatResponse, AssistantConversation, AssistantMessage, StrengthWorkout } from "@/lib/assistant/types";
+import type { AssistantBootstrap, AssistantChatResponse, AssistantConversation, AssistantConversationCreateResponse, AssistantMessage, AssistantThreadDomain, StrengthWorkout } from "@/lib/assistant/types";
 import styles from "./AssistantWorkspace.module.css";
 
 const demoWorkout: StrengthWorkout = {
@@ -23,6 +23,12 @@ const demoMessages: AssistantMessage[] = [
   { id: "hello", role: "assistant", content: "Good afternoon. Ready when you are.", created_at: new Date().toISOString() },
   { id: "question", role: "user", content: "What’s today’s workout?", created_at: new Date().toISOString() },
   { id: "answer", role: "assistant", content: "Lower strength. Four movements, about 52 minutes. We’ll start with back squat.", created_at: new Date().toISOString() },
+];
+
+const threadChoices: Array<{ domain: AssistantThreadDomain; label: string; description: string }> = [
+  { domain: "strength", label: "Strength", description: "Workouts, sets, weights, and progress" },
+  { domain: "running", label: "Running", description: "Runs, activity imports, and endurance" },
+  { domain: "nutrition", label: "Nutrition", description: "Meals, habits, and fueling" },
 ];
 
 function Icon({ name }: { name: "plus" | "send" | "spark" | "chevron" | "paperclip" }) {
@@ -62,6 +68,8 @@ export default function AssistantWorkspace() {
   const [email, setEmail] = useState("");
   const [signedIn, setSignedIn] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [newThreadOpen, setNewThreadOpen] = useState(false);
+  const [creatingThread, setCreatingThread] = useState(false);
   const [authNotice, setAuthNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -153,8 +161,26 @@ export default function AssistantWorkspace() {
     setAuthNotice(signInError ? signInError.message : "Check your email for a secure sign-in link.");
   }
   function newConversation() {
-    if (!signedIn) { setAuthOpen(true); return; }
-    setSelectedId(null); setMessages([{ id: "new", role: "assistant", content: "New conversation. What are we working on?", created_at: new Date().toISOString() }]);
+    setNewThreadOpen(true);
+  }
+
+  async function createThread(domain: AssistantThreadDomain) {
+    if (!signedIn) { setNewThreadOpen(false); setAuthOpen(true); return; }
+    if (creatingThread) return;
+    setCreatingThread(true); setError("");
+    try {
+      const response = await fetch("/api/assistant/conversations", {
+        method: "POST",
+        headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+        body: JSON.stringify({ domain }),
+      });
+      const data = (await response.json()) as AssistantConversationCreateResponse & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Unable to create the conversation.");
+      setConversations((current) => [data.conversation, ...current.filter((item) => item.id !== data.conversation.id)]);
+      setSelectedId(data.conversation.id); setMessages(data.messages); setNewThreadOpen(false); setContextOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to create the conversation.");
+    } finally { setCreatingThread(false); }
   }
 
   return <main className={styles.shell}>
@@ -192,6 +218,7 @@ export default function AssistantWorkspace() {
       </section>
       <aside className={styles.contextRail}><WorkoutCard workout={workout} /></aside>
     </section>
+    {newThreadOpen && <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget && !creatingThread) setNewThreadOpen(false); }}><section className={styles.threadModal} role="dialog" aria-modal="true" aria-labelledby="thread-title"><button className={styles.closeButton} disabled={creatingThread} onClick={() => setNewThreadOpen(false)} aria-label="Close">×</button><span className={styles.authMark}><Icon name="plus" /></span><h2 id="thread-title">Start a new thread</h2><p>Choose a focus so each conversation stays organized.</p><div className={styles.threadChoices}>{threadChoices.map((choice) => <button key={choice.domain} type="button" disabled={creatingThread} onClick={() => void createThread(choice.domain)}><strong>{choice.label}</strong><span>{choice.description}</span></button>)}</div></section></div>}
     {authOpen && <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}><section className={styles.authModal} role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className={styles.closeButton} onClick={() => setAuthOpen(false)} aria-label="Close">×</button><span className={styles.authMark}><Icon name="spark" /></span><h2 id="auth-title">Keep your Baseline</h2><p>Sign in with a private email link to save conversations, workouts, sets, and progress.</p><form onSubmit={submitMagicLink}><label htmlFor="email">Email</label><input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /><button>Send secure link</button></form>{authNotice && <p className={styles.authNotice}>{authNotice}</p>}</section></div>}
   </main>;
 }

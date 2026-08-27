@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
     let conversations = initialConversations;
     if (!conversations.length) {
-      await createConversation(supabase, userId, "Today’s training");
+      await createConversation(supabase, userId, "Today’s training", "strength");
       conversations = await listConversations(supabase, userId);
     }
 

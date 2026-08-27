@@ -39,6 +39,10 @@ function stableSafetyId(userId: string) {
   return createHash("sha256").update(userId).digest("hex").slice(0, 32);
 }
 
+function isUntitledConversation(title: string) {
+  return title === "New conversation" || /^New (?:strength|running|nutrition) chat$/.test(title);
+}
+
 export async function POST(request: Request) {
   try {
     const { supabase, userId } = await authenticateRequest(request);
@@ -81,7 +85,7 @@ export async function POST(request: Request) {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const common = {
       model: process.env.OPENAI_MODEL ?? "gpt-5.6-sol",
-      instructions,
+      instructions: `${instructions}\nThis conversation is categorized as ${conversation.domain}. Keep the response centered on that domain unless the user explicitly asks to connect it to another area.`,
       tools: assistantTools,
       reasoning: { effort: "low" as const },
       text: { verbosity: "low" as const },
@@ -152,9 +156,8 @@ export async function POST(request: Request) {
     });
 
     await updateConversation(supabase, userId, conversation.id, {
-      title: conversation.title === "New conversation" ? titleFromMessage(displayMessage) : undefined,
+      title: isUntitledConversation(conversation.title) ? titleFromMessage(displayMessage) : undefined,
       last_response_id: response.id,
-      domain: "strength",
     });
 
     const workout = await ensureTodayWorkout(supabase, userId);
