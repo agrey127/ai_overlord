@@ -46,6 +46,13 @@ type PendingImage = { id: string; file: File; previewUrl: string };
 
 const MAX_COMBINED_IMAGE_BYTES = 640 * 1024;
 
+function createAttachmentId(file: File) {
+  const randomId = typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${file.name}-${file.lastModified}-${randomId}`;
+}
+
 function fileToDataUrl(file: Blob) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -203,7 +210,7 @@ export default function AssistantWorkspace() {
     if (pendingImages.length + supported.length > 3) { setError("Attach at most 3 screenshots at a time."); return; }
     setError("");
     setPendingImages((current) => [...current, ...supported.map((file) => ({
-      id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+      id: createAttachmentId(file),
       file,
       previewUrl: URL.createObjectURL(file),
     }))]);
