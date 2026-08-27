@@ -44,13 +44,67 @@ function Icon({ name }: { name: "plus" | "send" | "spark" | "chevron" | "papercl
 
 type PendingImage = { id: string; file: File; previewUrl: string };
 
-function fileToDataUrl(file: File) {
+const MAX_COMBINED_IMAGE_BYTES = 640 * 1024;
+
+function fileToDataUrl(file: Blob) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error(`Unable to read ${file.name}.`));
+    reader.onerror = () => reject(new Error("Unable to read an attached screenshot."));
     reader.readAsDataURL(file);
   });
+}
+
+function canvasToJpeg(canvas: HTMLCanvasElement, quality: number) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Unable to optimize an attached screenshot.")), "image/jpeg", quality);
+  });
+}
+
+async function optimizeImage(file: File, targetBytes: number) {
+  if (file.size <= targetBytes) return fileToDataUrl(file);
+
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new window.Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error(`Unable to open ${file.name}.`));
+      element.src = sourceUrl;
+    });
+    const originalMaxDimension = Math.max(image.naturalWidth, image.naturalHeight);
+    let maxDimension = Math.min(1800, originalMaxDimension);
+    let quality = 0.84;
+    let optimized: Blob | null = null;
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const scale = Math.min(1, maxDimension / originalMaxDimension);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("This browser cannot optimize screenshots.");
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      optimized = await canvasToJpeg(canvas, quality);
+      if (optimized.size <= targetBytes || maxDimension <= 900) break;
+      maxDimension = Math.max(900, Math.round(maxDimension * 0.82));
+      quality = Math.max(0.58, quality - 0.05);
+    }
+
+    return fileToDataUrl(optimized ?? file);
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
+async function readAssistantResponse(response: Response) {
+  if (response.headers.get("content-type")?.includes("application/json")) {
+    return response.json() as Promise<AssistantChatResponse & { error?: string }>;
+  }
+  if (response.status === 413) {
+    throw new Error("The server rejected the screenshot upload as too large. The images were kept attached so you can retry.");
+  }
+  throw new Error(`The assistant server could not process the upload (HTTP ${response.status}).`);
 }
 
 async function authHeaders() {
@@ -117,9 +171,16 @@ export default function AssistantWorkspace() {
     const optimistic: AssistantMessage = { id: `pending-${Date.now()}`, role: "user", content: optimisticContent, created_at: new Date().toISOString() };
     setMessages((current) => [...current, optimistic]); setDraft(""); setLoading(true); setError("");
     try {
-      const images = await Promise.all(attachedImages.map(async ({ file }) => ({ data_url: await fileToDataUrl(file) })));
+      const targetBytes = Math.floor(MAX_COMBINED_IMAGE_BYTES / Math.max(1, attachedImages.length));
+      const images: Array<{ data_url: string }> = [];
+      for (const { file } of attachedImages) {
+        images.push({ data_url: await optimizeImage(file, targetBytes) });
+      }
+      if (images.reduce((total, image) => total + image.data_url.length, 0) > 900_000) {
+        throw new Error("The screenshots could not be reduced enough for a reliable upload. Try sending one or two at a time.");
+      }
       const response = await fetch("/api/assistant", { method: "POST", headers: { ...(await authHeaders()), "Content-Type": "application/json" }, body: JSON.stringify({ message: clean, conversationId: selectedId, images }) });
-      const data = (await response.json()) as AssistantChatResponse & { error?: string };
+      const data = await readAssistantResponse(response);
       if (!response.ok) throw new Error(data.error ?? "The assistant could not complete that request.");
       setMessages((current) => [...current, data.message]); setWorkout(data.workout); setSelectedId(data.conversationId);
       if (attachedImages.length) {
