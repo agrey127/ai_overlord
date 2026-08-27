@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import type { AssistantBootstrap, AssistantChatResponse, AssistantConversation, AssistantMessage, StrengthWorkout } from "@/lib/assistant/types";
 import styles from "./AssistantWorkspace.module.css";
@@ -24,14 +25,26 @@ const demoMessages: AssistantMessage[] = [
   { id: "answer", role: "assistant", content: "Lower strength. Four movements, about 52 minutes. We’ll start with back squat.", created_at: new Date().toISOString() },
 ];
 
-function Icon({ name }: { name: "plus" | "send" | "spark" | "chevron" }) {
+function Icon({ name }: { name: "plus" | "send" | "spark" | "chevron" | "paperclip" }) {
   const paths = {
     plus: <path d="M12 5v14M5 12h14" />,
     send: <path d="m4 4 16 8-16 8 3-8-3-8Zm3 8h13" />,
     spark: <path d="m12 3 1.4 4.6L18 9l-4.6 1.4L12 15l-1.4-4.6L6 9l4.6-1.4L12 3Zm6 12 .7 2.3L21 18l-2.3.7L18 21l-.7-2.3L15 18l2.3-.7L18 15Z" />,
     chevron: <path d="m8 10 4 4 4-4" />,
+    paperclip: <path d="m9.5 12.5 5.7-5.7a3 3 0 0 1 4.2 4.2l-7.8 7.8a5 5 0 0 1-7.1-7.1l7.4-7.4a2 2 0 1 1 2.8 2.8l-7.4 7.4a1 1 0 0 1-1.4-1.4l6.7-6.7" />,
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
+}
+
+type PendingImage = { id: string; file: File; previewUrl: string };
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error(`Unable to read ${file.name}.`));
+    reader.readAsDataURL(file);
+  });
 }
 
 async function authHeaders() {
@@ -53,7 +66,10 @@ export default function AssistantWorkspace() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingImagesRef = useRef<PendingImage[]>([]);
   const dateLabel = useMemo(() => new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date()), []);
 
   async function loadContext(conversationId?: string | null) {
@@ -78,21 +94,57 @@ export default function AssistantWorkspace() {
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, []);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+  useEffect(() => { pendingImagesRef.current = pendingImages; }, [pendingImages]);
+  useEffect(() => () => {
+    pendingImagesRef.current.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
+  }, []);
 
-  async function sendMessage(text: string) {
-    const clean = text.trim(); if (!clean || loading) return;
+  async function sendMessage(text: string, attachedImages: PendingImage[] = []) {
+    const clean = text.trim(); if ((!clean && !attachedImages.length) || loading) return;
     if (!signedIn) { setAuthOpen(true); return; }
-    const optimistic: AssistantMessage = { id: `pending-${Date.now()}`, role: "user", content: clean, created_at: new Date().toISOString() };
+    const displayText = clean || "Import this Garmin activity from the attached screenshot.";
+    const optimisticContent = attachedImages.length
+      ? `${displayText}\n${attachedImages.length} Garmin screenshot${attachedImages.length === 1 ? "" : "s"} attached`
+      : displayText;
+    const optimistic: AssistantMessage = { id: `pending-${Date.now()}`, role: "user", content: optimisticContent, created_at: new Date().toISOString() };
     setMessages((current) => [...current, optimistic]); setDraft(""); setLoading(true); setError("");
     try {
-      const response = await fetch("/api/assistant", { method: "POST", headers: { ...(await authHeaders()), "Content-Type": "application/json" }, body: JSON.stringify({ message: clean, conversationId: selectedId }) });
+      const images = await Promise.all(attachedImages.map(async ({ file }) => ({ data_url: await fileToDataUrl(file) })));
+      const response = await fetch("/api/assistant", { method: "POST", headers: { ...(await authHeaders()), "Content-Type": "application/json" }, body: JSON.stringify({ message: clean, conversationId: selectedId, images }) });
       const data = (await response.json()) as AssistantChatResponse & { error?: string };
       if (!response.ok) throw new Error(data.error ?? "The assistant could not complete that request.");
       setMessages((current) => [...current, data.message]); setWorkout(data.workout); setSelectedId(data.conversationId);
+      if (attachedImages.length) {
+        attachedImages.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
+        setPendingImages([]);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
       await loadContext(data.conversationId);
     } catch (e) {
       setMessages((current) => current.filter((message) => message.id !== optimistic.id)); setError(e instanceof Error ? e.message : "Something went wrong.");
     } finally { setLoading(false); }
+  }
+
+  function addImages(files: FileList | null) {
+    const incoming = Array.from(files ?? []);
+    if (!incoming.length) return;
+    const supported = incoming.filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type));
+    if (supported.length !== incoming.length) { setError("Garmin screenshots must be JPEG, PNG, or WebP images."); return; }
+    if (supported.some((file) => file.size > 8 * 1024 * 1024)) { setError("Each screenshot must be 8 MB or smaller."); return; }
+    if (pendingImages.length + supported.length > 3) { setError("Attach at most 3 screenshots at a time."); return; }
+    setError("");
+    setPendingImages((current) => [...current, ...supported.map((file) => ({
+      id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }))]);
+  }
+
+  function removeImage(id: string) {
+    setPendingImages((current) => current.filter((image) => {
+      if (image.id === id) URL.revokeObjectURL(image.previewUrl);
+      return image.id !== id;
+    }));
   }
 
   async function submitMagicLink(event: FormEvent) {
@@ -127,7 +179,15 @@ export default function AssistantWorkspace() {
         </div>
         <div className={styles.quickActions}>{workout.status !== "completed" ? <button onClick={() => void sendMessage(workout.status === "in_progress" ? "Finish today's workout." : "Start today's workout.")}>{workout.status === "in_progress" ? "Finish workout" : "Start workout"}</button> : null}<button onClick={() => void sendMessage("Help me log my next set.")}>Log a set</button><button onClick={() => void sendMessage("Review my recent strength progress.")}>Review progress</button></div>
         {error && <p className={styles.error} role="alert">{error}</p>}
-        <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); void sendMessage(draft); }}><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask Baseline anything…" aria-label="Message Baseline" /><button disabled={!draft.trim() || loading} aria-label="Send message"><Icon name="send" /></button></form>
+        <div className={styles.composerArea}>
+          {pendingImages.length ? <div className={styles.attachmentTray} aria-label="Attached Garmin screenshots">{pendingImages.map((image) => <figure key={image.id} className={styles.attachment}><Image src={image.previewUrl} alt="Garmin screenshot preview" width={58} height={58} unoptimized /><button type="button" onClick={() => removeImage(image.id)} aria-label={`Remove ${image.file.name}`}>×</button></figure>)}</div> : null}
+          <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); void sendMessage(draft, pendingImages); }}>
+            <input ref={fileInputRef} className={styles.fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { addImages(event.target.files); event.target.value = ""; }} />
+            <button className={styles.attachButton} type="button" disabled={loading} onClick={() => fileInputRef.current?.click()} aria-label="Attach Garmin screenshots"><Icon name="paperclip" /></button>
+            <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask Baseline anything…" aria-label="Message Baseline" />
+            <button disabled={(!draft.trim() && !pendingImages.length) || loading} aria-label="Send message"><Icon name="send" /></button>
+          </form>
+        </div>
         <p className={styles.disclaimer}>Baseline can make mistakes. Check important details.</p>
       </section>
       <aside className={styles.contextRail}><WorkoutCard workout={workout} /></aside>

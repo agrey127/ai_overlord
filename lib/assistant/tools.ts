@@ -1,12 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FunctionTool } from "openai/resources/responses/responses";
-import type { StrengthTrainingRole } from "@/lib/assistant/types";
+import type { ActivityType, StrengthTrainingRole } from "@/lib/assistant/types";
 import {
+  confirmActivityImport,
   completeTodayWorkout,
   deleteStrengthSet,
   ensureTodayWorkout,
   getStrengthProgress,
   logStrengthSet,
+  prepareActivityImport,
   replaceTodayWorkout,
   returnTodayWorkoutToScheduled,
   setExerciseTargetWeight,
@@ -17,6 +19,40 @@ import {
 } from "@/lib/assistant/repository";
 
 export const assistantTools: FunctionTool[] = [
+  {
+    type: "function",
+    name: "prepare_activity_import",
+    description: "Prepare a confirmation-required activity draft from Garmin screenshots or explicit user data. This does not save an activity. Use exact visible values only; convert kilometers to miles and metric pace to minutes per mile when necessary, and explain conversions to the user. Never guess missing values.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        activity_type: { type: "string", enum: ["run", "bike", "walk", "swim", "strength", "other"] },
+        activity_date: { type: "string", description: "Calendar date in YYYY-MM-DD format." },
+        duration_minutes: { type: "number", minimum: 0, maximum: 1440 },
+        calories_burned: { type: "number", minimum: 0, maximum: 10000 },
+        distance_miles: { type: ["number", "null"], minimum: 0, maximum: 1000 },
+        average_heart_rate: { type: ["integer", "null"], minimum: 0, maximum: 300 },
+        cadence: { type: ["integer", "null"], minimum: 0, maximum: 300 },
+        pace_min_per_mile: { type: ["number", "null"], minimum: 0, maximum: 120 },
+        notes: { type: ["string", "null"], maxLength: 1000 },
+      },
+      required: ["activity_type", "activity_date", "duration_minutes", "calories_burned", "distance_miles", "average_heart_rate", "cadence", "pace_min_per_mile", "notes"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "confirm_activity_import",
+    description: "Save one previously prepared Garmin activity draft. Call only after the user explicitly confirms the displayed draft. Pass only the exact pending draft ID returned by prepare_activity_import.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: { draft_id: { type: "string" } },
+      required: ["draft_id"],
+      additionalProperties: false,
+    },
+  },
   {
     type: "function",
     name: "get_today_workout",
@@ -194,10 +230,26 @@ export async function runAssistantTool(
   userId: string,
   name: string,
   rawArguments: string,
+  context?: { conversationId: string },
 ) {
   const args = (rawArguments ? JSON.parse(rawArguments) : {}) as ToolArguments;
 
   switch (name) {
+    case "prepare_activity_import":
+      if (!context?.conversationId) throw new Error("Activity imports require a conversation.");
+      return prepareActivityImport(supabase, userId, context.conversationId, {
+        activity_type: String(args.activity_type) as ActivityType,
+        activity_date: String(args.activity_date),
+        duration_minutes: Number(args.duration_minutes),
+        calories_burned: Number(args.calories_burned),
+        distance_miles: args.distance_miles == null ? null : Number(args.distance_miles),
+        average_heart_rate: args.average_heart_rate == null ? null : Number(args.average_heart_rate),
+        cadence: args.cadence == null ? null : Number(args.cadence),
+        pace_min_per_mile: args.pace_min_per_mile == null ? null : Number(args.pace_min_per_mile),
+        notes: args.notes == null ? null : String(args.notes),
+      });
+    case "confirm_activity_import":
+      return confirmActivityImport(supabase, userId, String(args.draft_id));
     case "get_today_workout":
       return ensureTodayWorkout(supabase, userId);
     case "start_workout":

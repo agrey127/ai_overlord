@@ -20,6 +20,21 @@ export type AssistantMessage = {
   created_at: string;
 };
 
+export type ActivityType = "run" | "bike" | "walk" | "swim" | "strength" | "other";
+
+export type ActivityDraft = {
+  id: string;
+  activity_type: ActivityType;
+  activity_date: string;
+  duration_minutes: number;
+  calories_burned: number;
+  distance_miles: number | null;
+  average_heart_rate: number | null;
+  cadence: number | null;
+  pace_min_per_mile: number | null;
+  notes: string | null;
+};
+
 export type StrengthSet = {
   id: string;
   set_number: number;

@@ -1,5 +1,8 @@
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
+  ActivityDraft,
+  ActivityType,
   AssistantConversation,
   AssistantMessage,
   StrengthExercise,
@@ -265,6 +268,128 @@ export async function updateConversation(
     .eq("id", conversationId)
     .eq("user_id", userId);
   assertResult(error, "update conversation");
+}
+
+const activityTypes = new Set<ActivityType>([
+  "run",
+  "bike",
+  "walk",
+  "swim",
+  "strength",
+  "other",
+]);
+
+function requiredActivityNumber(
+  value: number | null,
+  label: string,
+  minimum: number,
+  maximum: number,
+) {
+  if (value == null || !Number.isFinite(value) || value < minimum || value > maximum) {
+    throw new Error(`${label} is required and must be between ${minimum} and ${maximum}.`);
+  }
+  return value;
+}
+
+function optionalActivityNumber(
+  value: number | null,
+  label: string,
+  maximum: number,
+) {
+  if (value == null) return null;
+  if (!Number.isFinite(value) || value < 0 || value > maximum) {
+    throw new Error(`${label} must be between 0 and ${maximum}.`);
+  }
+  return value;
+}
+
+export async function prepareActivityImport(
+  supabase: SupabaseClient,
+  userId: string,
+  conversationId: string,
+  input: Omit<ActivityDraft, "id">,
+) {
+  if (!activityTypes.has(input.activity_type)) {
+    throw new Error(`Unsupported activity type: ${input.activity_type}`);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.activity_date)) {
+    throw new Error("Activity date must use YYYY-MM-DD.");
+  }
+  const parsedDate = new Date(`${input.activity_date}T00:00:00Z`);
+  if (Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== input.activity_date) {
+    throw new Error("Activity date is invalid.");
+  }
+
+  const payload: Omit<ActivityDraft, "id"> = {
+    activity_type: input.activity_type,
+    activity_date: input.activity_date,
+    duration_minutes: requiredActivityNumber(input.duration_minutes, "Duration", 0.01, 1440),
+    calories_burned: requiredActivityNumber(input.calories_burned, "Calories", 0, 10000),
+    distance_miles: optionalActivityNumber(input.distance_miles, "Distance", 1000),
+    average_heart_rate: optionalActivityNumber(input.average_heart_rate, "Average heart rate", 300),
+    cadence: optionalActivityNumber(input.cadence, "Cadence", 300),
+    pace_min_per_mile: optionalActivityNumber(input.pace_min_per_mile, "Pace", 120),
+    notes: input.notes?.trim().slice(0, 1000) || null,
+  };
+  const fingerprintFields = {
+    activity_type: payload.activity_type,
+    activity_date: payload.activity_date,
+    duration_minutes: payload.duration_minutes,
+    calories_burned: payload.calories_burned,
+    distance_miles: payload.distance_miles,
+    average_heart_rate: payload.average_heart_rate,
+    cadence: payload.cadence,
+    pace_min_per_mile: payload.pace_min_per_mile,
+  };
+  const sourceFingerprint = createHash("sha256")
+    .update(JSON.stringify(fingerprintFields))
+    .digest("hex");
+
+  const { data: duplicate, error: duplicateError } = await supabase
+    .from("activities")
+    .select("id,activity_type,activity_date,duration_minutes,calories_burned,distance_miles,average_heart_rate,cadence,pace_min_per_mile,notes")
+    .eq("user_id", userId)
+    .eq("source_fingerprint", sourceFingerprint)
+    .maybeSingle();
+  assertResult(duplicateError, "check activity duplicate");
+  if (duplicate) {
+    return { confirmation_required: false, duplicate: true, activity: duplicate };
+  }
+
+  const { data, error } = await supabase
+    .from("assistant_activity_drafts")
+    .insert({
+      conversation_id: conversationId,
+      user_id: userId,
+      payload,
+      source_fingerprint: sourceFingerprint,
+    })
+    .select("id,payload")
+    .single();
+  assertResult(error, "prepare activity import");
+  if (!data) throw new Error("Unable to read the prepared activity draft.");
+
+  return {
+    confirmation_required: true,
+    duplicate: false,
+    draft: { id: data.id, ...(data.payload as Omit<ActivityDraft, "id">) },
+  };
+}
+
+export async function confirmActivityImport(
+  supabase: SupabaseClient,
+  userId: string,
+  draftId: string,
+) {
+  const { data, error } = await supabase.rpc("confirm_activity_draft", {
+    p_user_id: userId,
+    p_draft_id: draftId,
+  });
+  assertResult(error, "confirm activity import");
+  if (!data || typeof data !== "object") {
+    throw new Error("confirm activity import: invalid database response");
+  }
+  return data;
 }
 
 export async function startTodayWorkout(supabase: SupabaseClient, userId: string) {
