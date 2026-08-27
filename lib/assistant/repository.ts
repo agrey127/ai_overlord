@@ -4,14 +4,15 @@ import type {
   AssistantMessage,
   StrengthExercise,
   StrengthSet,
+  StrengthTrainingRole,
   StrengthWorkout,
 } from "@/lib/assistant/types";
 
 const starterExercises = [
-  { exercise_name: "Back squat", position: 1, target_sets: 4, target_reps: 5, rest_seconds: 180 },
-  { exercise_name: "Romanian deadlift", position: 2, target_sets: 3, target_reps: 8, rest_seconds: 150 },
-  { exercise_name: "Walking lunge", position: 3, target_sets: 3, target_reps: 10, rest_seconds: 120 },
-  { exercise_name: "Standing calf raise", position: 4, target_sets: 3, target_reps: 12, rest_seconds: 90 },
+  { exercise_name: "Back squat", position: 1, target_sets: 4, target_reps: 5, training_role: "heavy", rest_seconds: 180 },
+  { exercise_name: "Romanian deadlift", position: 2, target_sets: 3, target_reps: 8, training_role: "technique", rest_seconds: 150 },
+  { exercise_name: "Walking lunge", position: 3, target_sets: 3, target_reps: 10, training_role: "accessory", rest_seconds: 120 },
+  { exercise_name: "Standing calf raise", position: 4, target_sets: 3, target_reps: 12, training_role: "accessory", rest_seconds: 90 },
 ] as const;
 
 function appDay() {
@@ -142,6 +143,8 @@ export async function getWorkoutById(
     position: row.position,
     target_sets: row.target_sets,
     target_reps: row.target_reps,
+    target_weight_lbs: row.target_weight_lbs == null ? null : Number(row.target_weight_lbs),
+    training_role: row.training_role as StrengthTrainingRole,
     rest_seconds: row.rest_seconds,
     notes: row.notes,
     sets: setsByExercise.get(row.id) ?? [],
@@ -155,6 +158,9 @@ export async function getWorkoutById(
     status: plan.status,
     started_at: plan.started_at,
     completed_at: plan.completed_at,
+    warmups: Array.isArray(plan.warmups)
+      ? plan.warmups.filter((item: unknown): item is string => typeof item === "string")
+      : [],
     exercises,
   };
 }
@@ -274,10 +280,32 @@ export async function startTodayWorkout(supabase: SupabaseClient, userId: string
   return getWorkoutById(supabase, userId, workout.id);
 }
 
+export async function returnTodayWorkoutToScheduled(
+  supabase: SupabaseClient,
+  userId: string,
+) {
+  const workout = await ensureTodayWorkout(supabase, userId);
+  const { data, error } = await supabase.rpc("return_strength_workout_to_scheduled", {
+    p_user_id: userId,
+    p_plan_id: workout.id,
+  });
+  assertResult(error, "return workout to scheduled");
+  if (!data || typeof data !== "object") {
+    throw new Error("return workout to scheduled: invalid database response");
+  }
+
+  return {
+    ...(data as Record<string, unknown>),
+    workout: await getWorkoutById(supabase, userId, workout.id),
+  };
+}
+
 export type ReplacementExercise = {
   exercise_name: string;
   target_sets: number;
   target_reps: number;
+  target_weight_lbs?: number | null;
+  training_role: StrengthTrainingRole;
   rest_seconds?: number | null;
   notes?: string | null;
 };
@@ -318,6 +346,29 @@ export async function replaceTodayWorkout(
   return { ...result, workout: await getWorkoutById(supabase, userId, currentWorkout.id) };
 }
 
+export async function setTodayWorkoutWarmups(
+  supabase: SupabaseClient,
+  userId: string,
+  warmups: string[],
+) {
+  const workout = await ensureTodayWorkout(supabase, userId);
+  const cleaned = warmups.map((item) => item.trim()).filter(Boolean);
+  if (cleaned.length > 10) throw new Error("A workout can have at most 10 warm-up items.");
+  if (cleaned.some((item) => item.length > 160)) {
+    throw new Error("Each warm-up item must be 160 characters or fewer.");
+  }
+
+  const { error } = await supabase
+    .from("strength_workout_plans")
+    .update({ warmups: cleaned, updated_at: new Date().toISOString() })
+    .eq("id", workout.id)
+    .eq("user_id", userId)
+    .select("id")
+    .single();
+  assertResult(error, "update workout warm-ups");
+  return getWorkoutById(supabase, userId, workout.id);
+}
+
 async function findExercise(
   supabase: SupabaseClient,
   userId: string,
@@ -333,6 +384,61 @@ async function findExercise(
   const exercise = direct ?? partial;
   if (!exercise) throw new Error(`Exercise not found in today's workout: ${exerciseName}`);
   return { workout, exercise };
+}
+
+export async function setExerciseTargetWeight(
+  supabase: SupabaseClient,
+  userId: string,
+  input: { exercise_name: string; target_weight_lbs: number | null },
+) {
+  const { workout, exercise } = await findExercise(supabase, userId, input.exercise_name);
+  if (
+    input.target_weight_lbs != null
+    && (!Number.isFinite(input.target_weight_lbs)
+      || input.target_weight_lbs < 0
+      || input.target_weight_lbs > 3000)
+  ) {
+    throw new Error("Target weight must be between 0 and 3000 lb.");
+  }
+  const { error } = await supabase
+    .from("strength_plan_exercises")
+    .update({ target_weight_lbs: input.target_weight_lbs })
+    .eq("id", exercise.id)
+    .eq("user_id", userId)
+    .select("id")
+    .single();
+  assertResult(error, "update exercise target weight");
+  return getWorkoutById(supabase, userId, workout.id);
+}
+
+const strengthTrainingRoles = new Set<StrengthTrainingRole>([
+  "standard",
+  "heavy",
+  "volume",
+  "light",
+  "technique",
+  "accessory",
+  "bodyweight",
+]);
+
+export async function setExerciseTrainingRole(
+  supabase: SupabaseClient,
+  userId: string,
+  input: { exercise_name: string; training_role: StrengthTrainingRole },
+) {
+  if (!strengthTrainingRoles.has(input.training_role)) {
+    throw new Error(`Unsupported training role: ${input.training_role}`);
+  }
+  const { workout, exercise } = await findExercise(supabase, userId, input.exercise_name);
+  const { error } = await supabase
+    .from("strength_plan_exercises")
+    .update({ training_role: input.training_role })
+    .eq("id", exercise.id)
+    .eq("user_id", userId)
+    .select("id")
+    .single();
+  assertResult(error, "update exercise training role");
+  return getWorkoutById(supabase, userId, workout.id);
 }
 
 export async function logStrengthSet(
@@ -418,7 +524,7 @@ export async function getStrengthProgress(supabase: SupabaseClient, userId: stri
 
   const { data: exercises, error: exerciseError } = await supabase
     .from("strength_plan_exercises")
-    .select("id,exercise_name")
+    .select("id,exercise_name,training_role")
     .eq("user_id", userId);
   assertResult(exerciseError, "load exercise history");
   const exerciseIds = (exercises ?? []).map((exercise) => exercise.id as string);
@@ -433,21 +539,39 @@ export async function getStrengthProgress(supabase: SupabaseClient, userId: stri
     .order("completed_at", { ascending: true });
   assertResult(setError, "load strength progress");
 
-  const names = new Map((exercises ?? []).map((exercise) => [exercise.id, exercise.exercise_name]));
-  const summary = new Map<string, { sets: number; max_weight_lbs: number; best_estimated_1rm: number }>();
+  const identities = new Map((exercises ?? []).map((exercise) => [exercise.id, {
+    exercise_name: exercise.exercise_name as string,
+    training_role: exercise.training_role as StrengthTrainingRole,
+  }]));
+  const summary = new Map<string, {
+    exercise_name: string;
+    training_role: StrengthTrainingRole;
+    sets: number;
+    max_weight_lbs: number;
+    best_estimated_1rm: number;
+  }>();
   for (const set of sets ?? []) {
-    const name = names.get(set.plan_exercise_id) ?? "Exercise";
-    const current = summary.get(name) ?? { sets: 0, max_weight_lbs: 0, best_estimated_1rm: 0 };
+    const identity = identities.get(set.plan_exercise_id) ?? {
+      exercise_name: "Exercise",
+      training_role: "standard" as const,
+    };
+    const key = `${identity.exercise_name}\u0000${identity.training_role}`;
+    const current = summary.get(key) ?? {
+      ...identity,
+      sets: 0,
+      max_weight_lbs: 0,
+      best_estimated_1rm: 0,
+    };
     const weight = Number(set.weight_lbs);
     const estimated = weight * (1 + Number(set.reps) / 30);
     current.sets += 1;
     current.max_weight_lbs = Math.max(current.max_weight_lbs, weight);
     current.best_estimated_1rm = Math.max(current.best_estimated_1rm, Math.round(estimated));
-    summary.set(name, current);
+    summary.set(key, current);
   }
 
   return {
     period_days: 90,
-    exercises: [...summary.entries()].map(([exercise_name, values]) => ({ exercise_name, ...values })),
+    exercises: [...summary.values()],
   };
 }

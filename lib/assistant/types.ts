@@ -29,12 +29,23 @@ export type StrengthSet = {
   completed_at: string;
 };
 
+export type StrengthTrainingRole =
+  | "standard"
+  | "heavy"
+  | "volume"
+  | "light"
+  | "technique"
+  | "accessory"
+  | "bodyweight";
+
 export type StrengthExercise = {
   id: string;
   exercise_name: string;
   position: number;
   target_sets: number;
   target_reps: number;
+  target_weight_lbs: number | null;
+  training_role: StrengthTrainingRole;
   rest_seconds: number;
   notes: string | null;
   sets: StrengthSet[];
@@ -48,6 +59,7 @@ export type StrengthWorkout = {
   status: "scheduled" | "in_progress" | "completed" | "skipped";
   started_at: string | null;
   completed_at: string | null;
+  warmups: string[];
   exercises: StrengthExercise[];
 };
 

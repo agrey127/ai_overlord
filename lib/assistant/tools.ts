@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FunctionTool } from "openai/resources/responses/responses";
+import type { StrengthTrainingRole } from "@/lib/assistant/types";
 import {
   completeTodayWorkout,
   deleteStrengthSet,
@@ -7,6 +8,10 @@ import {
   getStrengthProgress,
   logStrengthSet,
   replaceTodayWorkout,
+  returnTodayWorkoutToScheduled,
+  setExerciseTargetWeight,
+  setExerciseTrainingRole,
+  setTodayWorkoutWarmups,
   startTodayWorkout,
   updateStrengthSet,
 } from "@/lib/assistant/repository";
@@ -22,7 +27,14 @@ export const assistantTools: FunctionTool[] = [
   {
     type: "function",
     name: "start_workout",
-    description: "Mark today's scheduled strength workout as in progress. Use only when the user asks to start it.",
+    description: "Mark today's scheduled strength workout as in progress. Use only when the user asks to start it, then present the saved display-only warmups before the working exercises.",
+    strict: true,
+    parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  {
+    type: "function",
+    name: "return_workout_to_scheduled",
+    description: "Return today's in-progress strength workout to scheduled status without deleting or changing any logged sets. Use only when the user explicitly asks to pause, undo starting, or return today's workout to scheduled.",
     strict: true,
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
   },
@@ -46,16 +58,67 @@ export const assistantTools: FunctionTool[] = [
               exercise_name: { type: "string" },
               target_sets: { type: "integer", minimum: 1, maximum: 20 },
               target_reps: { type: "integer", minimum: 1, maximum: 100 },
+              target_weight_lbs: { type: ["number", "null"], minimum: 0, maximum: 3000 },
+              training_role: { type: "string", enum: ["standard", "heavy", "volume", "light", "technique", "accessory", "bodyweight"] },
               rest_seconds: { type: ["integer", "null"], minimum: 0, maximum: 1800 },
               notes: { type: ["string", "null"] },
             },
-            required: ["exercise_name", "target_sets", "target_reps", "rest_seconds", "notes"],
+            required: ["exercise_name", "target_sets", "target_reps", "target_weight_lbs", "training_role", "rest_seconds", "notes"],
             additionalProperties: false,
           },
         },
         confirm_destructive: { type: "boolean" },
       },
       required: ["name", "estimated_minutes", "exercises", "confirm_destructive"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "set_workout_warmups",
+    description: "Replace today's display-only warm-up checklist. Warm-ups are shown with the workout but are not logged as working sets or counted toward completion.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        warmups: {
+          type: "array",
+          minItems: 0,
+          maxItems: 10,
+          items: { type: "string", maxLength: 160 },
+        },
+      },
+      required: ["warmups"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "set_exercise_target_weight",
+    description: "Set or clear the planned working weight for this exact occurrence and training role of an exercise in today's workout. Never copy a heavy target to a volume, light, or technique occurrence. Use only when the user supplies the weight or explicitly asks to clear it.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        exercise_name: { type: "string" },
+        target_weight_lbs: { type: ["number", "null"], minimum: 0, maximum: 3000 },
+      },
+      required: ["exercise_name", "target_weight_lbs"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "set_exercise_training_role",
+    description: "Classify one exercise in today's workout as standard, heavy, volume, light, technique, accessory, or bodyweight so its target and progress remain separate from other versions of the same lift.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        exercise_name: { type: "string" },
+        training_role: { type: "string", enum: ["standard", "heavy", "volume", "light", "technique", "accessory", "bodyweight"] },
+      },
+      required: ["exercise_name", "training_role"],
       additionalProperties: false,
     },
   },
@@ -111,7 +174,7 @@ export const assistantTools: FunctionTool[] = [
   {
     type: "function",
     name: "complete_workout",
-    description: "Mark today's strength workout completed. Use only after the user explicitly says the workout is finished.",
+    description: "Mark today's strength workout completed after the user explicitly says they are finished. Completion is allowed even when some exercises or target sets were not completed; never invent missing sets.",
     strict: true,
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
   },
@@ -139,6 +202,8 @@ export async function runAssistantTool(
       return ensureTodayWorkout(supabase, userId);
     case "start_workout":
       return startTodayWorkout(supabase, userId);
+    case "return_workout_to_scheduled":
+      return returnTodayWorkoutToScheduled(supabase, userId);
     case "replace_today_workout":
       return replaceTodayWorkout(supabase, userId, {
         name: String(args.name),
@@ -150,12 +215,30 @@ export async function runAssistantTool(
                 exercise_name: String(exercise.exercise_name),
                 target_sets: Number(exercise.target_sets),
                 target_reps: Number(exercise.target_reps),
+                target_weight_lbs: exercise.target_weight_lbs == null ? null : Number(exercise.target_weight_lbs),
+                training_role: String(exercise.training_role) as StrengthTrainingRole,
                 rest_seconds: exercise.rest_seconds == null ? null : Number(exercise.rest_seconds),
                 notes: exercise.notes == null ? null : String(exercise.notes),
               };
             })
           : [],
         confirm_destructive: args.confirm_destructive === true,
+      });
+    case "set_workout_warmups":
+      return setTodayWorkoutWarmups(
+        supabase,
+        userId,
+        Array.isArray(args.warmups) ? args.warmups.map(String) : [],
+      );
+    case "set_exercise_target_weight":
+      return setExerciseTargetWeight(supabase, userId, {
+        exercise_name: String(args.exercise_name),
+        target_weight_lbs: args.target_weight_lbs == null ? null : Number(args.target_weight_lbs),
+      });
+    case "set_exercise_training_role":
+      return setExerciseTrainingRole(supabase, userId, {
+        exercise_name: String(args.exercise_name),
+        training_role: String(args.training_role) as StrengthTrainingRole,
       });
     case "log_set":
       return logStrengthSet(supabase, userId, {

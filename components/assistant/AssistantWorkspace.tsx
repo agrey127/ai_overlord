@@ -8,8 +8,9 @@ import styles from "./AssistantWorkspace.module.css";
 const demoWorkout: StrengthWorkout = {
   id: "preview", name: "Lower strength", scheduled_for: "2026-08-02", estimated_minutes: 52,
   status: "scheduled", started_at: null, completed_at: null,
-  exercises: [["Back squat",4,5],["Romanian deadlift",3,8],["Walking lunge",3,10],["Standing calf raise",3,12]].map(([name,sets,reps], i) => ({
-    id: `preview-${i}`, exercise_name: String(name), position: i + 1, target_sets: Number(sets), target_reps: Number(reps), rest_seconds: 120, notes: null, sets: [],
+  warmups: ["5 minutes of easy movement", "Dynamic mobility for the primary lift", "2–4 gradual ramp-up sets"],
+  exercises: [["Back squat",4,5,"heavy"],["Romanian deadlift",3,8,"technique"],["Walking lunge",3,10,"accessory"],["Standing calf raise",3,12,"accessory"]].map(([name,sets,reps,role], i) => ({
+    id: `preview-${i}`, exercise_name: String(name), position: i + 1, target_sets: Number(sets), target_reps: Number(reps), target_weight_lbs: null, training_role: String(role) as StrengthWorkout["exercises"][number]["training_role"], rest_seconds: 120, notes: null, sets: [],
   })),
 };
 const demoConversations: AssistantConversation[] = [
@@ -124,7 +125,7 @@ export default function AssistantWorkspace() {
           {messages.map((message) => message.role !== "tool" && <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>{message.role === "assistant" && <span className={styles.avatar}><Icon name="spark" /></span>}<div><span className={styles.speaker}>{message.role === "user" ? "You" : "Baseline"}</span><p>{message.content}</p></div></article>)}
           {loading && <article className={styles.assistantMessage}><span className={styles.avatar}><Icon name="spark" /></span><div><span className={styles.speaker}>Baseline</span><p className={styles.thinking}>Working through that…</p></div></article>}<div ref={endRef} />
         </div>
-        <div className={styles.quickActions}><button onClick={() => void sendMessage("Start today’s workout.")}>Start workout</button><button onClick={() => void sendMessage("Help me log my next set.")}>Log a set</button><button onClick={() => void sendMessage("Review my recent strength progress.")}>Review progress</button></div>
+        <div className={styles.quickActions}>{workout.status !== "completed" ? <button onClick={() => void sendMessage(workout.status === "in_progress" ? "Finish today's workout." : "Start today's workout.")}>{workout.status === "in_progress" ? "Finish workout" : "Start workout"}</button> : null}<button onClick={() => void sendMessage("Help me log my next set.")}>Log a set</button><button onClick={() => void sendMessage("Review my recent strength progress.")}>Review progress</button></div>
         {error && <p className={styles.error} role="alert">{error}</p>}
         <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); void sendMessage(draft); }}><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask Baseline anything…" aria-label="Message Baseline" /><button disabled={!draft.trim() || loading} aria-label="Send message"><Icon name="send" /></button></form>
         <p className={styles.disclaimer}>Baseline can make mistakes. Check important details.</p>
@@ -135,8 +136,31 @@ export default function AssistantWorkspace() {
   </main>;
 }
 
+function formatWeight(weight: number) {
+  return Number.isInteger(weight) ? String(weight) : weight.toFixed(1);
+}
+
 function WorkoutCard({ workout, mobile = false }: { workout: StrengthWorkout; mobile?: boolean }) {
   const completed = workout.exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0);
   const target = workout.exercises.reduce((sum, exercise) => sum + exercise.target_sets, 0);
-  return <section className={mobile ? styles.workoutMobile : styles.workoutCard}><div className={styles.workoutEyebrow}><span>Today’s training</span><span>{workout.estimated_minutes} min</span></div><h2>{workout.name}</h2><div className={styles.statusRow}><span className={styles.statusDot} />{workout.status.replace("_", " ")}<span>{completed}/{target} sets</span></div><ol className={styles.exerciseList}>{workout.exercises.map((exercise) => <li key={exercise.id}><span>{exercise.exercise_name}</span><strong>{exercise.target_sets}×{exercise.target_reps}</strong></li>)}</ol><div className={styles.progressTrack}><span style={{ width: `${target ? completed / target * 100 : 0}%` }} /></div></section>;
+  return <section className={mobile ? styles.workoutMobile : styles.workoutCard}>
+    <div className={styles.workoutEyebrow}><span>Today’s training</span><span>{workout.estimated_minutes} min</span></div>
+    <h2>{workout.name}</h2>
+    <div className={styles.statusRow}><span className={styles.statusDot} />{workout.status.replace("_", " ")}<span>{completed}/{target} sets</span></div>
+    {workout.warmups.length > 0 ? <section className={styles.warmupBlock} aria-label="Warm-up checklist">
+      <span className={styles.warmupLabel}>Warm-up · not tracked</span>
+      <ul>{workout.warmups.map((warmup) => <li key={warmup}>{warmup}</li>)}</ul>
+    </section> : null}
+    <ol className={styles.exerciseList}>{workout.exercises.map((exercise) => {
+      const latestSet = exercise.sets.at(-1);
+      const weight = exercise.target_weight_lbs == null
+        ? latestSet == null ? "Weight —" : `Last ${formatWeight(latestSet.weight_lbs)} lb`
+        : `${formatWeight(exercise.target_weight_lbs)} lb target`;
+      return <li key={exercise.id}>
+        <span>{exercise.exercise_name}</span>
+        <span className={styles.exercisePrescription}><strong>{exercise.target_sets}×{exercise.target_reps}</strong><small><span className={styles.exerciseRole}>{exercise.training_role}</span> · {weight}</small></span>
+      </li>;
+    })}</ol>
+    <div className={styles.progressTrack}><span style={{ width: `${target ? completed / target * 100 : 0}%` }} /></div>
+  </section>;
 }
