@@ -237,7 +237,7 @@ export async function getMessages(
 ): Promise<AssistantMessage[]> {
   const { data, error } = await supabase
     .from("assistant_messages")
-    .select("id,role,content,created_at")
+    .select("id,role,content,created_at,metadata")
     .eq("conversation_id", conversationId)
     .eq("user_id", userId)
     .neq("role", "tool")
@@ -269,7 +269,7 @@ export async function saveMessage(
       tool_call_id: input.toolCallId ?? null,
       metadata: input.metadata ?? {},
     })
-    .select("id,role,content,created_at")
+    .select("id,role,content,created_at,metadata")
     .single();
   assertResult(error, "save message");
   return data as AssistantMessage;

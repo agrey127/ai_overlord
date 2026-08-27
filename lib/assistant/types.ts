@@ -19,6 +19,7 @@ export type AssistantMessage = {
   role: "user" | "assistant" | "tool";
   content: string;
   created_at: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type ActivityType = "run" | "bike" | "walk" | "swim" | "strength" | "other";

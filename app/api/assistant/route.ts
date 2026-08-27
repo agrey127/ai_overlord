@@ -11,6 +11,7 @@ import {
   updateConversation,
 } from "@/lib/assistant/repository";
 import { assistantTools, runAssistantTool } from "@/lib/assistant/tools";
+import { assistantRequestsConfirmation } from "@/lib/assistant/confirmation";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -109,13 +110,14 @@ export async function POST(request: Request) {
       input: [{ role: "user", content: userContent }],
     });
 
+    let confirmationRequired = false;
     for (let round = 0; round < 5; round += 1) {
       const calls = response.output.filter(
         (item): item is ResponseFunctionToolCall => item.type === "function_call",
       );
       if (!calls.length) break;
 
-      const outputs = await Promise.all(
+      const toolResults = await Promise.all(
         calls.map(async (call) => {
           const result = await runAssistantTool(
             supabase,
@@ -133,26 +135,37 @@ export async function POST(request: Request) {
             toolCallId: call.call_id,
           });
           return {
-            type: "function_call_output" as const,
-            call_id: call.call_id,
-            output: JSON.stringify(result),
+            result,
+            output: {
+              type: "function_call_output" as const,
+              call_id: call.call_id,
+              output: JSON.stringify(result),
+            },
           };
         }),
       );
+      confirmationRequired ||= toolResults.some(({ result }) => (
+        typeof result === "object"
+        && result !== null
+        && "confirmation_required" in result
+        && result.confirmation_required === true
+      ));
 
       response = await client.responses.create({
         ...common,
         previous_response_id: response.id,
-        input: outputs,
+        input: toolResults.map(({ output }) => output),
       });
     }
 
     const answer = response.output_text.trim() || "I completed the request, but no summary was returned.";
+    confirmationRequired = assistantRequestsConfirmation(answer, confirmationRequired);
     const assistantMessage = await saveMessage(supabase, {
       conversationId: conversation.id,
       userId,
       role: "assistant",
       content: answer,
+      metadata: confirmationRequired ? { confirmation_required: true } : undefined,
     });
 
     await updateConversation(supabase, userId, conversation.id, {

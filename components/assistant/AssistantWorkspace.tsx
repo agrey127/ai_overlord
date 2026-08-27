@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import type { AssistantBootstrap, AssistantChatResponse, AssistantConversation, AssistantConversationCreateResponse, AssistantMessage, AssistantThreadDomain, StrengthWorkout } from "@/lib/assistant/types";
+import { assistantRequestsConfirmation, CONFIRMATION_REPLY } from "@/lib/assistant/confirmation";
 import styles from "./AssistantWorkspace.module.css";
 
 const demoWorkout: StrengthWorkout = {
@@ -24,6 +25,15 @@ const demoMessages: AssistantMessage[] = [
   { id: "question", role: "user", content: "What’s today’s workout?", created_at: new Date().toISOString() },
   { id: "answer", role: "assistant", content: "Lower strength. Four movements, about 52 minutes. We’ll start with back squat.", created_at: new Date().toISOString() },
 ];
+const demoMessagesByConversation: Record<string, AssistantMessage[]> = {
+  "demo-training": demoMessages,
+  "demo-review": [
+    { id: "review-hello", role: "assistant", content: "Let’s review the week and decide what matters next.", created_at: new Date().toISOString() },
+  ],
+  "demo-meals": [
+    { id: "meal-confirm", role: "assistant", content: "I have the nutrition entry ready. Please confirm before I save it.", created_at: new Date().toISOString() },
+  ],
+};
 
 const threadChoices: Array<{ domain: AssistantThreadDomain; label: string; description: string }> = [
   { domain: "strength", label: "Strength", description: "Workouts, sets, weights, and progress" },
@@ -140,6 +150,13 @@ export default function AssistantWorkspace() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingImagesRef = useRef<PendingImage[]>([]);
   const dateLabel = useMemo(() => new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date()), []);
+  const selectedConversation = conversations.find((conversation) => conversation.id === selectedId);
+  const isStrengthChat = selectedConversation?.domain === "strength";
+  const latestMessage = messages.at(-1);
+  const confirmationRequired = latestMessage?.role === "assistant" && assistantRequestsConfirmation(
+    latestMessage.content,
+    latestMessage.metadata?.confirmation_required === true,
+  );
 
   async function loadContext(conversationId?: string | null) {
     const headers = await authHeaders();
@@ -232,6 +249,12 @@ export default function AssistantWorkspace() {
     setNewThreadOpen(true);
   }
 
+  function selectConversation(conversation: AssistantConversation) {
+    if (signedIn) { void loadContext(conversation.id); return; }
+    setSelectedId(conversation.id);
+    setMessages(demoMessagesByConversation[conversation.id] ?? demoMessages);
+  }
+
   async function createThread(domain: AssistantThreadDomain) {
     if (!signedIn) { setNewThreadOpen(false); setAuthOpen(true); return; }
     if (creatingThread) return;
@@ -260,7 +283,7 @@ export default function AssistantWorkspace() {
     <section className={styles.workspace}>
       <aside className={styles.conversationRail} aria-label="Conversations">
         <div className={styles.railHeading}><span>Conversations</span><button onClick={newConversation} aria-label="New conversation"><Icon name="plus" /></button></div>
-        <div className={styles.conversationList}>{conversations.map((conversation) => <button key={conversation.id} className={conversation.id === selectedId ? styles.conversationActive : styles.conversation} onClick={() => signedIn ? void loadContext(conversation.id) : setSelectedId(conversation.id)}><span>{conversation.title}</span><small>{conversation.domain}</small></button>)}</div>
+        <div className={styles.conversationList}>{conversations.map((conversation) => <button key={conversation.id} className={conversation.id === selectedId ? styles.conversationActive : styles.conversation} onClick={() => selectConversation(conversation)}><span>{conversation.title}</span><small>{conversation.domain}</small></button>)}</div>
         <button className={styles.addConversation} onClick={newConversation}><Icon name="plus" />New conversation</button>
         <p className={styles.privacy}>{signedIn ? "Synced privately to your account" : "Preview mode · sign in to save"}</p>
       </aside>
@@ -271,7 +294,12 @@ export default function AssistantWorkspace() {
           {messages.map((message) => message.role !== "tool" && <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>{message.role === "assistant" && <span className={styles.avatar}><Icon name="spark" /></span>}<div><span className={styles.speaker}>{message.role === "user" ? "You" : "Baseline"}</span><p>{message.content}</p></div></article>)}
           {loading && <article className={styles.assistantMessage}><span className={styles.avatar}><Icon name="spark" /></span><div><span className={styles.speaker}>Baseline</span><p className={styles.thinking}>Working through that…</p></div></article>}<div ref={endRef} />
         </div>
-        <div className={styles.quickActions}>{workout.status !== "completed" ? <button onClick={() => void sendMessage(workout.status === "in_progress" ? "Finish today's workout." : "Start today's workout.")}>{workout.status === "in_progress" ? "Finish workout" : "Start workout"}</button> : null}<button onClick={() => void sendMessage("Help me log my next set.")}>Log a set</button><button onClick={() => void sendMessage("Review my recent strength progress.")}>Review progress</button></div>
+        {isStrengthChat || confirmationRequired ? <div className={styles.quickActions}>
+          {confirmationRequired ? <button disabled={loading} onClick={() => void sendMessage(CONFIRMATION_REPLY)}>Confirm</button> : null}
+          {isStrengthChat && workout.status !== "completed" ? <button disabled={loading} onClick={() => void sendMessage(workout.status === "in_progress" ? "Finish today's workout." : "Start today's workout.")}>{workout.status === "in_progress" ? "Finish workout" : "Start workout"}</button> : null}
+          {isStrengthChat ? <button disabled={loading} onClick={() => void sendMessage("Help me log my next set.")}>Log a set</button> : null}
+          {isStrengthChat ? <button className={styles.reviewAction} disabled={loading} onClick={() => void sendMessage("Review my recent strength progress.")}>Review progress</button> : null}
+        </div> : null}
         {error && <p className={styles.error} role="alert">{error}</p>}
         <div className={styles.composerArea}>
           {pendingImages.length ? <div className={styles.attachmentTray} aria-label="Attached Garmin screenshots">{pendingImages.map((image) => <figure key={image.id} className={styles.attachment}><Image src={image.previewUrl} alt="Garmin screenshot preview" width={58} height={58} unoptimized /><button type="button" onClick={() => removeImage(image.id)} aria-label={`Remove ${image.file.name}`}>×</button></figure>)}</div> : null}
