@@ -1,0 +1,47 @@
+.workspace, .stack { display: grid; gap: 16px; }
+.section { padding: 20px; scroll-margin-top: 20px; }
+.heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
+.heading span { color: var(--p3); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.heading h2, .listHeading h2 { margin: 5px 0 0; font-size: 20px; }
+.heading small { color: var(--muted); overflow-wrap: anywhere; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.field { display: grid; gap: 7px; color: var(--muted); font-size: 13px; min-width: 0; }
+.field input, .field select, .field textarea { width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; background: rgba(18,22,32,.72); color: var(--text); outline: none; resize: vertical; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: rgba(168,85,247,.62); box-shadow: 0 0 0 3px rgba(124,58,237,.13); }
+.numberInput { position: relative; }
+.numberInput input { padding-right: 46px; }
+.numberInput span { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--faint); pointer-events: none; }
+.saveRow, .formActions { display: flex; justify-content: flex-end; gap: 10px; }
+.primary, .secondary, .raceActions button { border: 1px solid rgba(168,85,247,.28); border-radius: 12px; color: var(--text); cursor: pointer; }
+.primary { padding: 12px 17px; background: radial-gradient(180px 80px at 20% 0%, rgba(124,58,237,.6), rgba(124,58,237,.2)); font-weight: 800; box-shadow: 0 14px 40px rgba(124,58,237,.18); }
+.primary:disabled { cursor: wait; opacity: .65; }
+.secondary, .raceActions button { padding: 9px 12px; background: rgba(255,255,255,.04); }
+.notice, .error, .stateCard, .empty { padding: 14px 16px; border-radius: 14px; border: 1px solid rgba(168,85,247,.26); background: rgba(124,58,237,.12); color: var(--text); }
+.error { border-color: rgba(239,68,68,.35); background: rgba(239,68,68,.1); }
+.stateCard { padding: 24px; }
+.stateCard h2 { margin-top: 0; }
+.stateCard p { color: var(--muted); }
+.stateCard a { color: var(--p3); }
+.raceList { display: grid; gap: 10px; }
+.listHeading { display: flex; justify-content: space-between; align-items: baseline; }
+.listHeading h2 { margin: 0; }
+.listHeading span { color: var(--muted); font-size: 13px; }
+.raceCard { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 14px; }
+.raceCard time { display: grid; justify-items: center; padding: 8px; border-radius: 12px; background: rgba(124,58,237,.16); color: var(--p3); }
+.raceCard time strong { font-size: 11px; text-transform: uppercase; }
+.raceCard time span { font-size: 23px; font-weight: 800; }
+.raceCard h3 { margin: 0; font-size: 16px; }
+.raceCard p { margin: 5px 0 8px; color: var(--muted); font-size: 13px; }
+.status { display: inline-block; color: var(--p3); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.raceActions { display: flex; gap: 7px; }
+.raceActions button:last-child { border-color: rgba(239,68,68,.25); color: #fca5a5; }
+.empty { color: var(--muted); text-align: center; }
+@media (max-width: 640px) {
+  .grid { grid-template-columns: 1fr; }
+  .section { padding: 16px; }
+  .heading { display: block; }
+  .heading small { display: block; margin-top: 8px; }
+  .raceCard { grid-template-columns: 52px minmax(0, 1fr); }
+  .raceActions { grid-column: 1 / -1; justify-content: flex-end; }
+  .primary { width: 100%; }
+}

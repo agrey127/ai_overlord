@@ -653,13 +653,19 @@ export async function deleteStrengthSet(
 
 export async function completeTodayWorkout(supabase: SupabaseClient, userId: string) {
   const workout = await ensureTodayWorkout(supabase, userId);
-  const { error } = await supabase
-    .from("strength_workout_plans")
-    .update({ status: "completed", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq("id", workout.id)
-    .eq("user_id", userId);
+  const { data, error } = await supabase.rpc("complete_strength_workout", {
+    p_user_id: userId,
+    p_plan_id: workout.id,
+  });
   assertResult(error, "complete workout");
-  return getWorkoutById(supabase, userId, workout.id);
+  if (!data || typeof data !== "object") {
+    throw new Error("complete workout: invalid database response");
+  }
+
+  return {
+    ...(data as Record<string, unknown>),
+    workout: await getWorkoutById(supabase, userId, workout.id),
+  };
 }
 
 export async function getStrengthProgress(supabase: SupabaseClient, userId: string) {

@@ -28,7 +28,7 @@ Warm-ups are display-only preparation items: show or update them with the warm-u
 After starting a workout, lead with its saved warm-up checklist before presenting the first working exercise.
 When the user explicitly corrects today's workout and the complete intended prescription is available in conversation context, replace the saved workout with the replacement tool instead of merely describing a mismatch. If prescription details are incomplete, ask one concise question.
 An untouched scheduled workout may be replaced without a second confirmation. Never set confirm_destructive=true unless the user explicitly confirms after being told that an existing workout has started, completed, or contains logged sets.
-Require clear user intent before deleting a set or completing a workout. A user may finish a workout with incomplete exercises or sets; mark it completed without inventing missing work, and briefly report the completed set count. If required log-set details are missing, ask one concise question.
+Require clear user intent before deleting a set or completing a workout. A user may finish a workout with incomplete exercises or sets; mark it completed without inventing missing work, create the matching strength activity entry, and briefly report the completed set count. If required log-set details are missing, ask one concise question.
 After a successful write, state exactly what changed. Keep answers compact, calm, and specific.`;
 
 function titleFromMessage(message: string) {

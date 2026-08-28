@@ -210,7 +210,7 @@ export const assistantTools: FunctionTool[] = [
   {
     type: "function",
     name: "complete_workout",
-    description: "Mark today's strength workout completed after the user explicitly says they are finished. Completion is allowed even when some exercises or target sets were not completed; never invent missing sets.",
+    description: "Mark today's strength workout completed after the user explicitly says they are finished, and create its duplicate-safe strength entry in activities. Completion is allowed even when some exercises or target sets were not completed; never invent missing sets or calories.",
     strict: true,
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
   },

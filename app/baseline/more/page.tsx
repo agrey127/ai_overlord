@@ -9,6 +9,12 @@ type Module = {
 
 const modules: Module[] = [
   {
+    title: "Profile & Goals",
+    description: "Profile, training targets, nutrition goals, and upcoming races.",
+    href: "/baseline/more/settings",
+    accent: true,
+  },
+  {
     title: "Nutrition",
     description: "Daily macro split + today's food log.",
     href: "/baseline/more/nutrition",
