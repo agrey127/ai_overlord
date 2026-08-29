@@ -59,6 +59,7 @@ function Icon({ name }: { name: "plus" | "send" | "spark" | "chevron" | "papercl
 }
 
 type PendingImage = { id: string; file: File; previewUrl: string };
+type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 
 const MAX_COMBINED_IMAGE_BYTES = 640 * 1024;
 
@@ -322,7 +323,7 @@ export default function AssistantWorkspace() {
       </aside>
       <section className={styles.chatPanel} aria-label="Assistant conversation">
         <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>{isNutritionChat ? "Saved meals" : "Today’s training"}</small>{isNutritionChat ? `${savedMeals.length} meal${savedMeals.length === 1 ? "" : "s"}` : workout.name}</span><Icon name="chevron" /></button>
-        {contextOpen && (isNutritionChat ? <NutritionMealsCard meals={savedMeals} mobile /> : <WorkoutCard workout={workout} mobile />)}
+        {contextOpen && (isNutritionChat ? <NutritionMealsCard meals={savedMeals} signedIn={signedIn} onRequireAuth={() => setAuthOpen(true)} mobile /> : <WorkoutCard workout={workout} mobile />)}
         <div className={styles.messages} aria-live="polite">
           {messages.map((message) => message.role !== "tool" && <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>{message.role === "assistant" && <span className={styles.avatar}><Icon name="spark" /></span>}<div><span className={styles.speaker}>{message.role === "user" ? "You" : "Baseline"}</span><p>{message.content}</p></div></article>)}
           {loading && <article className={styles.assistantMessage}><span className={styles.avatar}><Icon name="spark" /></span><div><span className={styles.speaker}>Baseline</span><p className={styles.thinking}>Working through that…</p></div></article>}<div ref={endRef} />
@@ -345,7 +346,7 @@ export default function AssistantWorkspace() {
         </div>
         <p className={styles.disclaimer}>Baseline can make mistakes. Check important details.</p>
       </section>
-      <aside className={styles.contextRail}>{isNutritionChat ? <NutritionMealsCard meals={savedMeals} /> : <WorkoutCard workout={workout} />}</aside>
+      <aside className={styles.contextRail}>{isNutritionChat ? <NutritionMealsCard meals={savedMeals} signedIn={signedIn} onRequireAuth={() => setAuthOpen(true)} /> : <WorkoutCard workout={workout} />}</aside>
     </section>
     {newThreadOpen && <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget && !creatingThread) setNewThreadOpen(false); }}><section className={styles.threadModal} role="dialog" aria-modal="true" aria-labelledby="thread-title"><button className={styles.closeButton} disabled={creatingThread} onClick={() => setNewThreadOpen(false)} aria-label="Close">×</button><span className={styles.authMark}><Icon name="spark" /></span><h2 id="thread-title">Choose a chat</h2><p>Each subject keeps one continuous conversation.</p><div className={styles.threadChoices}>{threadChoices.map((choice) => <button key={choice.domain} type="button" disabled={creatingThread} onClick={() => selectDomain(choice.domain)}><strong>{choice.label}</strong><span>{choice.description}</span></button>)}</div></section></div>}
     {authOpen && <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}><section className={styles.authModal} role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className={styles.closeButton} onClick={() => setAuthOpen(false)} aria-label="Close">×</button><span className={styles.authMark}><Icon name="spark" /></span><h2 id="auth-title">Keep your Baseline</h2><p>Sign in with a private email link to save conversations, workouts, sets, and progress.</p><form onSubmit={submitMagicLink}><label htmlFor="email">Email</label><input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /><button>Send secure link</button></form>{authNotice && <p className={styles.authNotice}>{authNotice}</p>}</section></div>}
@@ -361,15 +362,75 @@ function formatMacro(value: number | null) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-function NutritionMealsCard({ meals, mobile = false }: { meals: SavedMeal[]; mobile?: boolean }) {
+function NutritionMealsCard({
+  meals,
+  signedIn,
+  onRequireAuth,
+  mobile = false,
+}: {
+  meals: SavedMeal[];
+  signedIn: boolean;
+  onRequireAuth: () => void;
+  mobile?: boolean;
+}) {
+  const [selectedMealId, setSelectedMealId] = useState<string | null>(null);
+  const [mealType, setMealType] = useState<MealType>("lunch");
+  const [servings, setServings] = useState("1");
+  const [logging, setLogging] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [logError, setLogError] = useState("");
+
+  function openLogger(mealId: string) {
+    setSelectedMealId((current) => current === mealId ? null : mealId);
+    setMealType("lunch");
+    setServings("1");
+    setNotice("");
+    setLogError("");
+  }
+
+  async function confirmLog(meal: SavedMeal) {
+    if (!signedIn) {
+      onRequireAuth();
+      return;
+    }
+    setLogging(true);
+    setNotice("");
+    setLogError("");
+    try {
+      const response = await fetch("/api/assistant/meals", {
+        method: "POST",
+        headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+        body: JSON.stringify({ savedMealId: meal.id, mealType, servings: Number(servings) }),
+      });
+      const data = (await response.json()) as { logged?: { meal_name: string; meal_type: MealType; servings: number }; error?: string };
+      if (!response.ok || !data.logged) throw new Error(data.error ?? "Unable to log this meal.");
+      setSelectedMealId(null);
+      setNotice(`Logged ${data.logged.meal_name} as ${data.logged.meal_type} · ${data.logged.servings} serving${data.logged.servings === 1 ? "" : "s"}.`);
+    } catch (error) {
+      setLogError(error instanceof Error ? error.message : "Unable to log this meal.");
+    } finally {
+      setLogging(false);
+    }
+  }
+
   return <section className={mobile ? styles.nutritionMobile : styles.nutritionCard}>
     <div className={styles.workoutEyebrow}><span>Saved meals</span><span>{meals.length}</span></div>
     <h2>Meal library</h2>
-    <p className={styles.nutritionIntro}>Your reusable meals and their saved macros.</p>
+    <p className={styles.nutritionIntro}>Choose a meal to review and log it.</p>
+    {notice ? <p className={styles.mealLogNotice} role="status">{notice}</p> : null}
+    {logError ? <p className={styles.mealLogError} role="alert">{logError}</p> : null}
     {meals.length ? <ol className={styles.savedMealList}>{meals.map((meal) => <li key={meal.id}>
-      <div className={styles.savedMealHeading}><strong>{meal.name}</strong><span>{formatMacro(meal.calories)} cal</span></div>
+      <div className={styles.savedMealHeading}><strong>{meal.name}</strong><div className={styles.savedMealActions}><span>{formatMacro(meal.calories)} cal</span><button type="button" aria-expanded={selectedMealId === meal.id} onClick={() => openLogger(meal.id)}>Log</button></div></div>
       {meal.description ? <p>{meal.description}</p> : null}
       <div className={styles.macroRow}><span>P {formatMacro(meal.protein_g)}g</span><span>C {formatMacro(meal.carbs_g)}g</span><span>F {formatMacro(meal.fat_g)}g</span></div>
+      {selectedMealId === meal.id ? <div className={styles.mealLogger}>
+        <div className={styles.mealLogFields}>
+          <label>Meal<select value={mealType} onChange={(event) => setMealType(event.target.value as MealType)}><option value="breakfast">Breakfast</option><option value="lunch">Lunch</option><option value="dinner">Dinner</option><option value="snack">Snack</option></select></label>
+          <label>Servings<input type="number" min="0.01" max="20" step="0.25" inputMode="decimal" value={servings} onChange={(event) => setServings(event.target.value)} /></label>
+        </div>
+        <div className={styles.mealLogPreview}>{formatMacro(meal.calories == null ? null : meal.calories * Number(servings || 0))} cal · P {formatMacro(meal.protein_g == null ? null : meal.protein_g * Number(servings || 0))}g</div>
+        <div className={styles.mealLogButtons}><button type="button" disabled={logging} onClick={() => void confirmLog(meal)}>{logging ? "Logging…" : "Confirm log"}</button><button type="button" disabled={logging} onClick={() => setSelectedMealId(null)}>Cancel</button></div>
+      </div> : null}
     </li>)}</ol> : <div className={styles.noSavedMeals}>No saved meals yet.</div>}
   </section>;
 }
