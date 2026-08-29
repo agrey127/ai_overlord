@@ -6,6 +6,7 @@ import type {
   AssistantConversation,
   AssistantDomain,
   AssistantMessage,
+  SavedMeal,
   StrengthExercise,
   StrengthSet,
   StrengthTrainingRole,
@@ -34,6 +35,28 @@ function appDay() {
 
 function assertResult(error: { message: string } | null, operation: string) {
   if (error) throw new Error(`${operation}: ${error.message}`);
+}
+
+export async function listSavedMeals(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<SavedMeal[]> {
+  const { data, error } = await supabase
+    .from("saved_meals")
+    .select("id, name, description, calories, protein_g, carbs_g, fat_g")
+    .eq("user_id", userId)
+    .order("name", { ascending: true });
+  assertResult(error, "load saved meals");
+
+  return (data ?? []).map((meal) => ({
+    id: meal.id,
+    name: meal.name,
+    description: meal.description,
+    calories: meal.calories == null ? null : Number(meal.calories),
+    protein_g: meal.protein_g == null ? null : Number(meal.protein_g),
+    carbs_g: meal.carbs_g == null ? null : Number(meal.carbs_g),
+    fat_g: meal.fat_g == null ? null : Number(meal.fat_g),
+  }));
 }
 
 export async function ensureTodayWorkout(
@@ -159,6 +182,7 @@ export async function getWorkoutById(
     name: plan.name,
     scheduled_for: plan.scheduled_for,
     estimated_minutes: plan.estimated_minutes,
+    notes: plan.notes ?? null,
     status: plan.status,
     started_at: plan.started_at,
     completed_at: plan.completed_at,
@@ -166,6 +190,137 @@ export async function getWorkoutById(
       ? plan.warmups.filter((item: unknown): item is string => typeof item === "string")
       : [],
     exercises,
+  };
+}
+
+export async function listStrengthWorkoutPlans(
+  supabase: SupabaseClient,
+  userId: string,
+  input: { date_from: string | null; date_to: string | null },
+) {
+  let query = supabase
+    .from("strength_workout_plans")
+    .select("id,name,scheduled_for,estimated_minutes,status,notes,started_at,completed_at")
+    .eq("user_id", userId)
+    .order("scheduled_for", { ascending: true })
+    .limit(90);
+  if (input.date_from) query = query.gte("scheduled_for", input.date_from);
+  if (input.date_to) query = query.lte("scheduled_for", input.date_to);
+
+  const { data, error } = await query;
+  assertResult(error, "list strength workout plans");
+  return { workouts: data ?? [] };
+}
+
+export async function getStrengthWorkoutPlan(
+  supabase: SupabaseClient,
+  userId: string,
+  input: { plan_id: string | null; scheduled_for: string | null },
+) {
+  let query = supabase
+    .from("strength_workout_plans")
+    .select("id")
+    .eq("user_id", userId);
+  query = input.plan_id
+    ? query.eq("id", input.plan_id)
+    : query.eq("scheduled_for", input.scheduled_for ?? appDay()).order("created_at").limit(1);
+
+  const { data, error } = await query.maybeSingle();
+  assertResult(error, "find strength workout plan");
+  if (!data) {
+    throw new Error(
+      input.plan_id
+        ? "No saved strength workout matches that plan ID."
+        : `No saved strength workout exists for ${input.scheduled_for ?? appDay()}.`,
+    );
+  }
+  return getWorkoutById(supabase, userId, data.id);
+}
+
+type SaveStrengthWorkoutPlanInput = {
+  plan_id: string | null;
+  scheduled_for: string;
+  name: string;
+  estimated_minutes: number;
+  warmups: string[];
+  notes: string | null;
+  exercises: Array<{
+    id: string | null;
+    exercise_name: string;
+    target_sets: number;
+    target_reps: number;
+    target_weight_lbs: number | null;
+    training_role: StrengthTrainingRole;
+    rest_seconds: number;
+    notes: string | null;
+  }>;
+  confirm_destructive: boolean;
+};
+
+export async function saveStrengthWorkoutPlan(
+  supabase: SupabaseClient,
+  userId: string,
+  input: SaveStrengthWorkoutPlanInput,
+) {
+  const { data, error } = await supabase.rpc("save_strength_workout_plan", {
+    p_user_id: userId,
+    p_plan_id: input.plan_id,
+    p_scheduled_for: input.scheduled_for,
+    p_name: input.name,
+    p_estimated_minutes: input.estimated_minutes,
+    p_warmups: input.warmups,
+    p_notes: input.notes,
+    p_exercises: input.exercises,
+    p_confirm_destructive: input.confirm_destructive,
+  });
+  assertResult(error, "save strength workout plan");
+
+  const result = data as {
+    updated: boolean;
+    created?: boolean;
+    confirmation_required: boolean;
+    plan_id: string;
+    removed_exercise_count: number;
+    removed_logged_set_count: number;
+  };
+  return {
+    ...result,
+    workout: await getWorkoutById(supabase, userId, result.plan_id),
+  };
+}
+
+export async function deleteStrengthWorkoutPlan(
+  supabase: SupabaseClient,
+  userId: string,
+  input: { plan_id: string; confirm_destructive: boolean },
+) {
+  const workout = await getWorkoutById(supabase, userId, input.plan_id);
+  const loggedSetCount = workout.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
+  const needsConfirmation = workout.status !== "scheduled" || loggedSetCount > 0;
+  if (needsConfirmation && !input.confirm_destructive) {
+    return {
+      deleted: false,
+      confirmation_required: true,
+      reason: "This workout has started, completed, or contains logged sets.",
+      plan_id: workout.id,
+      workout_name: workout.name,
+      status: workout.status,
+      logged_set_count: loggedSetCount,
+    };
+  }
+
+  const { error } = await supabase
+    .from("strength_workout_plans")
+    .delete()
+    .eq("id", workout.id)
+    .eq("user_id", userId);
+  assertResult(error, "delete strength workout plan");
+  return {
+    deleted: true,
+    confirmation_required: false,
+    plan_id: workout.id,
+    workout_name: workout.name,
+    logged_set_count: loggedSetCount,
   };
 }
 

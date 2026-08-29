@@ -4,6 +4,7 @@ import {
   createConversation,
   ensureTodayWorkout,
   getMessages,
+  listSavedMeals,
   listConversations,
 } from "@/lib/assistant/repository";
 
@@ -16,9 +17,10 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const requestedConversationId = url.searchParams.get("conversationId");
 
-    const [workout, initialConversations] = await Promise.all([
+    const [workout, initialConversations, savedMeals] = await Promise.all([
       ensureTodayWorkout(supabase, userId),
       listConversations(supabase, userId),
+      listSavedMeals(supabase, userId),
     ]);
 
     let conversations = initialConversations;
@@ -41,6 +43,7 @@ export async function GET(request: Request) {
       messages,
       selectedConversationId,
       workout,
+      savedMeals,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load the assistant.";

@@ -73,11 +73,22 @@ export type StrengthWorkout = {
   name: string;
   scheduled_for: string;
   estimated_minutes: number;
+  notes: string | null;
   status: "scheduled" | "in_progress" | "completed" | "skipped";
   started_at: string | null;
   completed_at: string | null;
   warmups: string[];
   exercises: StrengthExercise[];
+};
+
+export type SavedMeal = {
+  id: string;
+  name: string;
+  description: string | null;
+  calories: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
 };
 
 export type AssistantBootstrap = {
@@ -86,6 +97,7 @@ export type AssistantBootstrap = {
   messages: AssistantMessage[];
   selectedConversationId: string | null;
   workout: StrengthWorkout;
+  savedMeals: SavedMeal[];
 };
 
 export type AssistantChatResponse = {

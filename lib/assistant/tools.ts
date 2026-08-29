@@ -4,13 +4,17 @@ import type { ActivityType, StrengthTrainingRole } from "@/lib/assistant/types";
 import {
   confirmActivityImport,
   completeTodayWorkout,
+  deleteStrengthWorkoutPlan,
   deleteStrengthSet,
   ensureTodayWorkout,
+  getStrengthWorkoutPlan,
   getStrengthProgress,
+  listStrengthWorkoutPlans,
   logStrengthSet,
   prepareActivityImport,
   replaceTodayWorkout,
   returnTodayWorkoutToScheduled,
+  saveStrengthWorkoutPlan,
   setExerciseTargetWeight,
   setExerciseTrainingRole,
   setTodayWorkoutWarmups,
@@ -59,6 +63,96 @@ export const assistantTools: FunctionTool[] = [
     description: "Read today's strength workout, exercises, targets, status, and logged sets.",
     strict: true,
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  {
+    type: "function",
+    name: "list_workout_plans",
+    description: "List saved strength workout plans and their IDs, dates, names, statuses, and durations. Use this to locate plans before reading or editing one. Null dates list up to 90 plans.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        date_from: { type: ["string", "null"], description: "Optional inclusive YYYY-MM-DD start date." },
+        date_to: { type: ["string", "null"], description: "Optional inclusive YYYY-MM-DD end date." },
+      },
+      required: ["date_from", "date_to"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "get_workout_plan",
+    description: "Read one saved strength workout plan with its complete prescription and logged sets. Prefer an exact plan ID from list_workout_plans; otherwise provide a date. If both are null, reads today's plan without creating one.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        plan_id: { type: ["string", "null"] },
+        scheduled_for: { type: ["string", "null"], description: "Workout date in YYYY-MM-DD format." },
+      },
+      required: ["plan_id", "scheduled_for"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "save_workout_plan",
+    description: "Create or fully update a saved strength workout plan. Read an existing plan first, then include every exercise that should remain. Preserve each existing exercise ID when editing or reordering it; use null only for a new exercise. Omitting an existing ID removes that exercise. If removal would delete logged sets, first call with confirm_destructive=false and retry with true only after explicit confirmation.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        plan_id: { type: ["string", "null"], description: "Existing plan ID, or null to create a plan for the supplied date." },
+        scheduled_for: { type: "string", description: "Workout date in YYYY-MM-DD format." },
+        name: { type: "string", minLength: 1, maxLength: 160 },
+        estimated_minutes: { type: "integer", minimum: 1, maximum: 360 },
+        warmups: {
+          type: "array",
+          minItems: 0,
+          maxItems: 10,
+          items: { type: "string", maxLength: 160 },
+        },
+        notes: { type: ["string", "null"], maxLength: 1000 },
+        exercises: {
+          type: "array",
+          minItems: 1,
+          maxItems: 20,
+          items: {
+            type: "object",
+            properties: {
+              id: { type: ["string", "null"], description: "Existing exercise ID, or null for a new exercise." },
+              exercise_name: { type: "string", minLength: 1, maxLength: 160 },
+              target_sets: { type: "integer", minimum: 1, maximum: 20 },
+              target_reps: { type: "integer", minimum: 1, maximum: 100 },
+              target_weight_lbs: { type: ["number", "null"], minimum: 0, maximum: 3000 },
+              training_role: { type: "string", enum: ["standard", "heavy", "volume", "light", "technique", "accessory", "bodyweight"] },
+              rest_seconds: { type: "integer", minimum: 0, maximum: 1800 },
+              notes: { type: ["string", "null"], maxLength: 1000 },
+            },
+            required: ["id", "exercise_name", "target_sets", "target_reps", "target_weight_lbs", "training_role", "rest_seconds", "notes"],
+            additionalProperties: false,
+          },
+        },
+        confirm_destructive: { type: "boolean" },
+      },
+      required: ["plan_id", "scheduled_for", "name", "estimated_minutes", "warmups", "notes", "exercises", "confirm_destructive"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "delete_workout_plan",
+    description: "Delete an entire saved strength workout plan. Call with confirm_destructive=false first. A started/completed plan or one with logged sets requires explicit user confirmation before retrying with true.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        plan_id: { type: "string" },
+        confirm_destructive: { type: "boolean" },
+      },
+      required: ["plan_id", "confirm_destructive"],
+      additionalProperties: false,
+    },
   },
   {
     type: "function",
@@ -252,6 +346,46 @@ export async function runAssistantTool(
       return confirmActivityImport(supabase, userId, String(args.draft_id));
     case "get_today_workout":
       return ensureTodayWorkout(supabase, userId);
+    case "list_workout_plans":
+      return listStrengthWorkoutPlans(supabase, userId, {
+        date_from: args.date_from == null ? null : String(args.date_from),
+        date_to: args.date_to == null ? null : String(args.date_to),
+      });
+    case "get_workout_plan":
+      return getStrengthWorkoutPlan(supabase, userId, {
+        plan_id: args.plan_id == null ? null : String(args.plan_id),
+        scheduled_for: args.scheduled_for == null ? null : String(args.scheduled_for),
+      });
+    case "save_workout_plan":
+      return saveStrengthWorkoutPlan(supabase, userId, {
+        plan_id: args.plan_id == null ? null : String(args.plan_id),
+        scheduled_for: String(args.scheduled_for),
+        name: String(args.name),
+        estimated_minutes: Number(args.estimated_minutes),
+        warmups: Array.isArray(args.warmups) ? args.warmups.map(String) : [],
+        notes: args.notes == null ? null : String(args.notes),
+        exercises: Array.isArray(args.exercises)
+          ? args.exercises.map((item) => {
+              const exercise = item as ToolArguments;
+              return {
+                id: exercise.id == null ? null : String(exercise.id),
+                exercise_name: String(exercise.exercise_name),
+                target_sets: Number(exercise.target_sets),
+                target_reps: Number(exercise.target_reps),
+                target_weight_lbs: exercise.target_weight_lbs == null ? null : Number(exercise.target_weight_lbs),
+                training_role: String(exercise.training_role) as StrengthTrainingRole,
+                rest_seconds: Number(exercise.rest_seconds),
+                notes: exercise.notes == null ? null : String(exercise.notes),
+              };
+            })
+          : [],
+        confirm_destructive: args.confirm_destructive === true,
+      });
+    case "delete_workout_plan":
+      return deleteStrengthWorkoutPlan(supabase, userId, {
+        plan_id: String(args.plan_id),
+        confirm_destructive: args.confirm_destructive === true,
+      });
     case "start_workout":
       return startTodayWorkout(supabase, userId);
     case "return_workout_to_scheduled":

@@ -3,12 +3,12 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
-import type { AssistantBootstrap, AssistantChatResponse, AssistantConversation, AssistantConversationCreateResponse, AssistantMessage, AssistantThreadDomain, StrengthWorkout } from "@/lib/assistant/types";
+import type { AssistantBootstrap, AssistantChatResponse, AssistantConversation, AssistantConversationCreateResponse, AssistantMessage, AssistantThreadDomain, SavedMeal, StrengthWorkout } from "@/lib/assistant/types";
 import { assistantRequestsConfirmation, CONFIRMATION_REPLY } from "@/lib/assistant/confirmation";
 import styles from "./AssistantWorkspace.module.css";
 
 const demoWorkout: StrengthWorkout = {
-  id: "preview", name: "Lower strength", scheduled_for: "2026-08-02", estimated_minutes: 52,
+  id: "preview", name: "Lower strength", scheduled_for: "2026-08-02", estimated_minutes: 52, notes: null,
   status: "scheduled", started_at: null, completed_at: null,
   warmups: ["5 minutes of easy movement", "Dynamic mobility for the primary lift", "2–4 gradual ramp-up sets"],
   exercises: [["Back squat",4,5,"heavy"],["Romanian deadlift",3,8,"technique"],["Walking lunge",3,10,"accessory"],["Standing calf raise",3,12,"accessory"]].map(([name,sets,reps,role], i) => ({
@@ -34,6 +34,12 @@ const demoMessagesByConversation: Record<string, AssistantMessage[]> = {
     { id: "meal-confirm", role: "assistant", content: "I have the nutrition entry ready. Please confirm before I save it.", created_at: new Date().toISOString() },
   ],
 };
+
+const demoSavedMeals: SavedMeal[] = [
+  { id: "meal-1", name: "Eggs and toast", description: "Three eggs, sourdough toast, and coffee", calories: 520, protein_g: 31, carbs_g: 43, fat_g: 25 },
+  { id: "meal-2", name: "Chicken rice bowl", description: "Chicken breast, jasmine rice, and vegetables", calories: 690, protein_g: 58, carbs_g: 78, fat_g: 14 },
+  { id: "meal-3", name: "Protein oats", description: "Oats, whey, berries, and peanut butter", calories: 610, protein_g: 44, carbs_g: 71, fat_g: 18 },
+];
 
 const threadChoices: Array<{ domain: AssistantThreadDomain; label: string; description: string }> = [
   { domain: "strength", label: "Strength", description: "Workouts, sets, weights, and progress" },
@@ -132,6 +138,7 @@ async function authHeaders() {
 
 export default function AssistantWorkspace() {
   const [workout, setWorkout] = useState(demoWorkout);
+  const [savedMeals, setSavedMeals] = useState(demoSavedMeals);
   const [conversations, setConversations] = useState(demoConversations);
   const [messages, setMessages] = useState(demoMessages);
   const [selectedId, setSelectedId] = useState<string | null>("demo-training");
@@ -152,6 +159,7 @@ export default function AssistantWorkspace() {
   const dateLabel = useMemo(() => new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date()), []);
   const selectedConversation = conversations.find((conversation) => conversation.id === selectedId);
   const isStrengthChat = selectedConversation?.domain === "strength";
+  const isNutritionChat = selectedConversation?.domain === "nutrition";
   const latestMessage = messages.at(-1);
   const confirmationRequired = latestMessage?.role === "assistant" && assistantRequestsConfirmation(
     latestMessage.content,
@@ -164,7 +172,7 @@ export default function AssistantWorkspace() {
     const response = await fetch(`/api/assistant/context${query}`, { headers });
     const data = (await response.json()) as AssistantBootstrap & { error?: string };
     if (!response.ok) throw new Error(data.error ?? "Unable to load your assistant.");
-    setWorkout(data.workout); setConversations(data.conversations);
+    setWorkout(data.workout); setSavedMeals(data.savedMeals); setConversations(data.conversations);
     setMessages(data.messages.filter((message) => message.role !== "tool")); setSelectedId(data.selectedConversationId);
   }
 
@@ -288,8 +296,8 @@ export default function AssistantWorkspace() {
         <p className={styles.privacy}>{signedIn ? "Synced privately to your account" : "Preview mode · sign in to save"}</p>
       </aside>
       <section className={styles.chatPanel} aria-label="Assistant conversation">
-        <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>Today’s training</small>{workout.name}</span><Icon name="chevron" /></button>
-        {contextOpen && <WorkoutCard workout={workout} mobile />}
+        <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>{isNutritionChat ? "Saved meals" : "Today’s training"}</small>{isNutritionChat ? `${savedMeals.length} meal${savedMeals.length === 1 ? "" : "s"}` : workout.name}</span><Icon name="chevron" /></button>
+        {contextOpen && (isNutritionChat ? <NutritionMealsCard meals={savedMeals} mobile /> : <WorkoutCard workout={workout} mobile />)}
         <div className={styles.messages} aria-live="polite">
           {messages.map((message) => message.role !== "tool" && <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>{message.role === "assistant" && <span className={styles.avatar}><Icon name="spark" /></span>}<div><span className={styles.speaker}>{message.role === "user" ? "You" : "Baseline"}</span><p>{message.content}</p></div></article>)}
           {loading && <article className={styles.assistantMessage}><span className={styles.avatar}><Icon name="spark" /></span><div><span className={styles.speaker}>Baseline</span><p className={styles.thinking}>Working through that…</p></div></article>}<div ref={endRef} />
@@ -312,7 +320,7 @@ export default function AssistantWorkspace() {
         </div>
         <p className={styles.disclaimer}>Baseline can make mistakes. Check important details.</p>
       </section>
-      <aside className={styles.contextRail}><WorkoutCard workout={workout} /></aside>
+      <aside className={styles.contextRail}>{isNutritionChat ? <NutritionMealsCard meals={savedMeals} /> : <WorkoutCard workout={workout} />}</aside>
     </section>
     {newThreadOpen && <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget && !creatingThread) setNewThreadOpen(false); }}><section className={styles.threadModal} role="dialog" aria-modal="true" aria-labelledby="thread-title"><button className={styles.closeButton} disabled={creatingThread} onClick={() => setNewThreadOpen(false)} aria-label="Close">×</button><span className={styles.authMark}><Icon name="plus" /></span><h2 id="thread-title">Start a new thread</h2><p>Choose a focus so each conversation stays organized.</p><div className={styles.threadChoices}>{threadChoices.map((choice) => <button key={choice.domain} type="button" disabled={creatingThread} onClick={() => void createThread(choice.domain)}><strong>{choice.label}</strong><span>{choice.description}</span></button>)}</div></section></div>}
     {authOpen && <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}><section className={styles.authModal} role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className={styles.closeButton} onClick={() => setAuthOpen(false)} aria-label="Close">×</button><span className={styles.authMark}><Icon name="spark" /></span><h2 id="auth-title">Keep your Baseline</h2><p>Sign in with a private email link to save conversations, workouts, sets, and progress.</p><form onSubmit={submitMagicLink}><label htmlFor="email">Email</label><input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /><button>Send secure link</button></form>{authNotice && <p className={styles.authNotice}>{authNotice}</p>}</section></div>}
@@ -321,6 +329,24 @@ export default function AssistantWorkspace() {
 
 function formatWeight(weight: number) {
   return Number.isInteger(weight) ? String(weight) : weight.toFixed(1);
+}
+
+function formatMacro(value: number | null) {
+  if (value == null) return "—";
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function NutritionMealsCard({ meals, mobile = false }: { meals: SavedMeal[]; mobile?: boolean }) {
+  return <section className={mobile ? styles.nutritionMobile : styles.nutritionCard}>
+    <div className={styles.workoutEyebrow}><span>Saved meals</span><span>{meals.length}</span></div>
+    <h2>Meal library</h2>
+    <p className={styles.nutritionIntro}>Your reusable meals and their saved macros.</p>
+    {meals.length ? <ol className={styles.savedMealList}>{meals.map((meal) => <li key={meal.id}>
+      <div className={styles.savedMealHeading}><strong>{meal.name}</strong><span>{formatMacro(meal.calories)} cal</span></div>
+      {meal.description ? <p>{meal.description}</p> : null}
+      <div className={styles.macroRow}><span>P {formatMacro(meal.protein_g)}g</span><span>C {formatMacro(meal.carbs_g)}g</span><span>F {formatMacro(meal.fat_g)}g</span></div>
+    </li>)}</ol> : <div className={styles.noSavedMeals}>No saved meals yet.</div>}
+  </section>;
 }
 
 function WorkoutCard({ workout, mobile = false }: { workout: StrengthWorkout; mobile?: boolean }) {
