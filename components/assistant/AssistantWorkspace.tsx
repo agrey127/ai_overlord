@@ -157,6 +157,18 @@ export default function AssistantWorkspace() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingImagesRef = useRef<PendingImage[]>([]);
   const dateLabel = useMemo(() => new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date()), []);
+  const conversationsByDomain = useMemo(() => {
+    const indexed = new Map<AssistantThreadDomain, AssistantConversation>();
+    for (const conversation of conversations) {
+      if (
+        (conversation.domain === "strength" || conversation.domain === "nutrition" || conversation.domain === "running")
+        && !indexed.has(conversation.domain)
+      ) {
+        indexed.set(conversation.domain, conversation);
+      }
+    }
+    return indexed;
+  }, [conversations]);
   const selectedConversation = conversations.find((conversation) => conversation.id === selectedId);
   const isStrengthChat = selectedConversation?.domain === "strength";
   const isNutritionChat = selectedConversation?.domain === "nutrition";
@@ -257,6 +269,17 @@ export default function AssistantWorkspace() {
     setNewThreadOpen(true);
   }
 
+  function selectDomain(domain: AssistantThreadDomain) {
+    const conversation = conversationsByDomain.get(domain);
+    if (conversation) {
+      setNewThreadOpen(false);
+      setContextOpen(false);
+      selectConversation(conversation);
+      return;
+    }
+    void createThread(domain);
+  }
+
   function selectConversation(conversation: AssistantConversation) {
     if (signedIn) { void loadContext(conversation.id); return; }
     setSelectedId(conversation.id);
@@ -286,13 +309,15 @@ export default function AssistantWorkspace() {
     <header className={styles.header}>
       <div><p className={styles.brand}>Baseline</p><p className={styles.date}>{dateLabel}</p></div>
       <div className={styles.headerTitle}><span className={styles.mark}><Icon name="spark" /></span>Assistant</div>
-      <button className={styles.newButton} onClick={newConversation}><Icon name="plus" /><span>New</span></button>
+      <button className={styles.newButton} onClick={newConversation}><Icon name="spark" /><span>Chats</span></button>
     </header>
     <section className={styles.workspace}>
       <aside className={styles.conversationRail} aria-label="Conversations">
-        <div className={styles.railHeading}><span>Conversations</span><button onClick={newConversation} aria-label="New conversation"><Icon name="plus" /></button></div>
-        <div className={styles.conversationList}>{conversations.map((conversation) => <button key={conversation.id} className={conversation.id === selectedId ? styles.conversationActive : styles.conversation} onClick={() => selectConversation(conversation)}><span>{conversation.title}</span><small>{conversation.domain}</small></button>)}</div>
-        <button className={styles.addConversation} onClick={newConversation}><Icon name="plus" />New conversation</button>
+        <div className={styles.railHeading}><span>Chats</span></div>
+        <div className={styles.conversationList}>{threadChoices.map((choice) => {
+          const conversation = conversationsByDomain.get(choice.domain);
+          return <button key={choice.domain} className={conversation?.id === selectedId ? styles.conversationActive : styles.conversation} onClick={() => selectDomain(choice.domain)}><span>{choice.label}</span></button>;
+        })}</div>
         <p className={styles.privacy}>{signedIn ? "Synced privately to your account" : "Preview mode · sign in to save"}</p>
       </aside>
       <section className={styles.chatPanel} aria-label="Assistant conversation">
@@ -322,7 +347,7 @@ export default function AssistantWorkspace() {
       </section>
       <aside className={styles.contextRail}>{isNutritionChat ? <NutritionMealsCard meals={savedMeals} /> : <WorkoutCard workout={workout} />}</aside>
     </section>
-    {newThreadOpen && <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget && !creatingThread) setNewThreadOpen(false); }}><section className={styles.threadModal} role="dialog" aria-modal="true" aria-labelledby="thread-title"><button className={styles.closeButton} disabled={creatingThread} onClick={() => setNewThreadOpen(false)} aria-label="Close">×</button><span className={styles.authMark}><Icon name="plus" /></span><h2 id="thread-title">Start a new thread</h2><p>Choose a focus so each conversation stays organized.</p><div className={styles.threadChoices}>{threadChoices.map((choice) => <button key={choice.domain} type="button" disabled={creatingThread} onClick={() => void createThread(choice.domain)}><strong>{choice.label}</strong><span>{choice.description}</span></button>)}</div></section></div>}
+    {newThreadOpen && <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget && !creatingThread) setNewThreadOpen(false); }}><section className={styles.threadModal} role="dialog" aria-modal="true" aria-labelledby="thread-title"><button className={styles.closeButton} disabled={creatingThread} onClick={() => setNewThreadOpen(false)} aria-label="Close">×</button><span className={styles.authMark}><Icon name="spark" /></span><h2 id="thread-title">Choose a chat</h2><p>Each subject keeps one continuous conversation.</p><div className={styles.threadChoices}>{threadChoices.map((choice) => <button key={choice.domain} type="button" disabled={creatingThread} onClick={() => selectDomain(choice.domain)}><strong>{choice.label}</strong><span>{choice.description}</span></button>)}</div></section></div>}
     {authOpen && <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}><section className={styles.authModal} role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className={styles.closeButton} onClick={() => setAuthOpen(false)} aria-label="Close">×</button><span className={styles.authMark}><Icon name="spark" /></span><h2 id="auth-title">Keep your Baseline</h2><p>Sign in with a private email link to save conversations, workouts, sets, and progress.</p><form onSubmit={submitMagicLink}><label htmlFor="email">Email</label><input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /><button>Send secure link</button></form>{authNotice && <p className={styles.authNotice}>{authNotice}</p>}</section></div>}
   </main>;
 }
