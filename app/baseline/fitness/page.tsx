@@ -5,6 +5,7 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 import Link from "next/link";
+import FitnessUpcoming from "@/components/fitness/FitnessUpcoming";
 import {
   fetchReadinessStatus,
   fetchRunConsistency,
@@ -148,6 +149,8 @@ export default async function FitnessPage() {
           Score + actionables. Everything else is noise.
         </p>
       </header>
+
+      <FitnessUpcoming />
 
       <section
         style={{
