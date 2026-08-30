@@ -91,11 +91,16 @@
 
 .workoutDetails p,
 .emptyText,
+.workoutError,
 .signInCard p {
   margin: 10px 0 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.workoutError {
+  color: rgba(254, 202, 202, 0.92);
 }
 
 .workoutDetails span {

@@ -26,6 +26,7 @@ export type UpcomingResponse = {
     exercise_count: number;
     exercise_names: string[];
   } | null;
+  workout_error?: string | null;
   error?: string;
 };
 
@@ -157,6 +158,10 @@ export function FitnessUpcomingContent({ data }: { data: UpcomingResponse }) {
               {data.workout.status === "in_progress" ? " · in progress" : " · ready when you are"}
             </span>
           </div>
+        ) : data.workout_error ? (
+          <p className={styles.workoutError} role="status">
+            Workout rotation is temporarily unavailable. Your race details are still up to date.
+          </p>
         ) : (
           <p className={styles.emptyText}>Create the next plan with the Assistant and it will appear here.</p>
         )}

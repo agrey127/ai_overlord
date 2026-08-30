@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     const { supabase, userId } = await authenticateRequest(request);
     const today = appDay();
 
-    const [raceResult, workout] = await Promise.all([
+    const [raceResult, workoutResult] = await Promise.all([
       supabase
         .from("running_races")
         .select("id,race_name,race_date,distance_miles,location,goal_time_minutes")
@@ -43,12 +43,18 @@ export async function GET(request: Request) {
         .order("race_date", { ascending: true })
         .limit(1)
         .maybeSingle(),
-      getCurrentOrNextWorkout(supabase, userId),
+      getCurrentOrNextWorkout(supabase, userId)
+        .then((workout) => ({ workout, error: null }))
+        .catch((error: unknown) => ({
+          workout: null,
+          error: error instanceof Error ? error.message : "Unable to load the workout rotation.",
+        })),
     ]);
 
     if (raceResult.error) throw new Error(`load next race: ${raceResult.error.message}`);
 
     const race = raceResult.data;
+    const workout = workoutResult.workout;
     return NextResponse.json({
       race: race
         ? {
@@ -57,16 +63,19 @@ export async function GET(request: Request) {
             days_until: dateDifferenceInDays(today, race.race_date),
           }
         : null,
-      workout: {
-        id: workout.id,
-        name: workout.name,
-        estimated_minutes: workout.estimated_minutes,
-        status: workout.status,
-        scheduled_for: workout.scheduled_for,
-        rotation_position: workout.rotation_position,
-        exercise_count: workout.exercises.length,
-        exercise_names: workout.exercises.slice(0, 3).map((exercise) => exercise.exercise_name),
-      },
+      workout: workout
+        ? {
+            id: workout.id,
+            name: workout.name,
+            estimated_minutes: workout.estimated_minutes,
+            status: workout.status,
+            scheduled_for: workout.scheduled_for,
+            rotation_position: workout.rotation_position,
+            exercise_count: workout.exercises.length,
+            exercise_names: workout.exercises.slice(0, 3).map((exercise) => exercise.exercise_name),
+          }
+        : null,
+      workout_error: workoutResult.error,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load upcoming fitness details.";
