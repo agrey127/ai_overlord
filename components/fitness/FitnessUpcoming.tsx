@@ -20,8 +20,9 @@ export type UpcomingResponse = {
     id: string;
     name: string;
     estimated_minutes: number;
-    status: "scheduled" | "in_progress";
-    scheduled_for: string;
+    status: "next" | "scheduled" | "in_progress";
+    scheduled_for: string | null;
+    rotation_position: number | null;
     exercise_count: number;
     exercise_names: string[];
   } | null;

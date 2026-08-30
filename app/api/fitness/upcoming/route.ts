@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/supabase/authenticated";
+import { getCurrentOrNextWorkout } from "@/lib/assistant/repository";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
     const { supabase, userId } = await authenticateRequest(request);
     const today = appDay();
 
-    const [raceResult, activeWorkoutResult, queuedWorkoutResult] = await Promise.all([
+    const [raceResult, workout] = await Promise.all([
       supabase
         .from("running_races")
         .select("id,race_name,race_date,distance_miles,location,goal_time_minutes")
@@ -42,47 +43,10 @@ export async function GET(request: Request) {
         .order("race_date", { ascending: true })
         .limit(1)
         .maybeSingle(),
-      supabase
-        .from("strength_workout_plans")
-        .select("id,name,estimated_minutes,status,scheduled_for")
-        .eq("user_id", userId)
-        .eq("status", "in_progress")
-        .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase
-        .from("strength_workout_plans")
-        .select("id,name,estimated_minutes,status,scheduled_for")
-        .eq("user_id", userId)
-        .eq("status", "scheduled")
-        .order("scheduled_for", { ascending: true })
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle(),
+      getCurrentOrNextWorkout(supabase, userId),
     ]);
 
     if (raceResult.error) throw new Error(`load next race: ${raceResult.error.message}`);
-    if (activeWorkoutResult.error) throw new Error(`load active workout: ${activeWorkoutResult.error.message}`);
-    if (queuedWorkoutResult.error) throw new Error(`load next workout: ${queuedWorkoutResult.error.message}`);
-
-    const workout = activeWorkoutResult.data ?? queuedWorkoutResult.data;
-    let exerciseNames: string[] = [];
-    let exerciseCount = 0;
-
-    if (workout) {
-      const exerciseResult = await supabase
-        .from("strength_plan_exercises")
-        .select("exercise_name", { count: "exact" })
-        .eq("user_id", userId)
-        .eq("plan_id", workout.id)
-        .order("position", { ascending: true })
-        .limit(3);
-      if (exerciseResult.error) {
-        throw new Error(`load next workout exercises: ${exerciseResult.error.message}`);
-      }
-      exerciseNames = (exerciseResult.data ?? []).map((item) => item.exercise_name);
-      exerciseCount = exerciseResult.count ?? exerciseNames.length;
-    }
 
     const race = raceResult.data;
     return NextResponse.json({
@@ -93,13 +57,16 @@ export async function GET(request: Request) {
             days_until: dateDifferenceInDays(today, race.race_date),
           }
         : null,
-      workout: workout
-        ? {
-            ...workout,
-            exercise_count: exerciseCount,
-            exercise_names: exerciseNames,
-          }
-        : null,
+      workout: {
+        id: workout.id,
+        name: workout.name,
+        estimated_minutes: workout.estimated_minutes,
+        status: workout.status,
+        scheduled_for: workout.scheduled_for,
+        rotation_position: workout.rotation_position,
+        exercise_count: workout.exercises.length,
+        exercise_names: workout.exercises.slice(0, 3).map((exercise) => exercise.exercise_name),
+      },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load upcoming fitness details.";

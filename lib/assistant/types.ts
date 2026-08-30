@@ -71,14 +71,17 @@ export type StrengthExercise = {
 export type StrengthWorkout = {
   id: string;
   name: string;
-  scheduled_for: string;
+  scheduled_for: string | null;
   estimated_minutes: number;
   notes: string | null;
-  status: "scheduled" | "in_progress" | "completed" | "skipped";
+  status: "next" | "scheduled" | "in_progress" | "completed" | "skipped";
   started_at: string | null;
   completed_at: string | null;
   warmups: string[];
   exercises: StrengthExercise[];
+  is_template: boolean;
+  template_id: string | null;
+  rotation_position: number | null;
 };
 
 export type SavedMeal = {

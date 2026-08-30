@@ -6,19 +6,23 @@ import {
   completeTodayWorkout,
   deleteStrengthWorkoutPlan,
   deleteStrengthSet,
-  ensureTodayWorkout,
+  getCurrentOrNextWorkout,
+  getRotationWorkout,
   getStrengthWorkoutPlan,
   getStrengthProgress,
   listStrengthWorkoutPlans,
+  listWorkoutRotation,
   logStrengthSet,
   prepareActivityImport,
   replaceTodayWorkout,
   returnTodayWorkoutToScheduled,
   saveStrengthWorkoutPlan,
+  saveRotationWorkout,
   setExerciseTargetWeight,
   setExerciseTrainingRole,
   setTodayWorkoutWarmups,
-  startTodayWorkout,
+  setNextRotationWorkout,
+  startNextWorkout,
   updateStrengthSet,
 } from "@/lib/assistant/repository";
 
@@ -59,15 +63,89 @@ export const assistantTools: FunctionTool[] = [
   },
   {
     type: "function",
-    name: "get_today_workout",
-    description: "Read today's strength workout, exercises, targets, status, and logged sets.",
+    name: "get_next_workout",
+    description: "Read the active strength session, or the next workout in the rotation when no session is active. This is independent of the calendar date.",
     strict: true,
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
   },
   {
     type: "function",
+    name: "list_workout_rotation",
+    description: "List the reusable strength workout rotation in order. Use this—not dated session history—to understand Day 1, Day 2, Day 3, Day 4, and so on.",
+    strict: true,
+    parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  {
+    type: "function",
+    name: "get_rotation_workout",
+    description: "Read one reusable workout in the rotation, including all exercises and targets.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        template_id: { type: ["string", "null"] },
+        rotation_position: { type: ["integer", "null"], minimum: 1, maximum: 50 },
+      },
+      required: ["template_id", "rotation_position"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "set_next_workout",
+    description: "Manually set which rotation position is next. Use when the user corrects the pointer; this does not complete, skip, or delete any workout.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: { rotation_position: { type: "integer", minimum: 1, maximum: 50 } },
+      required: ["rotation_position"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "save_rotation_workout",
+    description: "Create or fully update one reusable workout in the rotation. Read it first when editing and include every exercise that should remain. This changes future sessions, not completed history.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        template_id: { type: ["string", "null"] },
+        rotation_position: { type: "integer", minimum: 1, maximum: 50 },
+        name: { type: "string", minLength: 1, maxLength: 160 },
+        estimated_minutes: { type: "integer", minimum: 1, maximum: 360 },
+        warmups: { type: "array", minItems: 0, maxItems: 10, items: { type: "string", maxLength: 160 } },
+        notes: { type: ["string", "null"], maxLength: 1000 },
+        active: { type: "boolean" },
+        exercises: {
+          type: "array",
+          minItems: 1,
+          maxItems: 20,
+          items: {
+            type: "object",
+            properties: {
+              id: { type: ["string", "null"] },
+              exercise_name: { type: "string", minLength: 1, maxLength: 160 },
+              target_sets: { type: "integer", minimum: 1, maximum: 20 },
+              target_reps: { type: "integer", minimum: 1, maximum: 100 },
+              target_weight_lbs: { type: ["number", "null"], minimum: 0, maximum: 3000 },
+              training_role: { type: "string", enum: ["standard", "heavy", "volume", "light", "technique", "accessory", "bodyweight"] },
+              rest_seconds: { type: "integer", minimum: 0, maximum: 1800 },
+              notes: { type: ["string", "null"], maxLength: 1000 },
+            },
+            required: ["id", "exercise_name", "target_sets", "target_reps", "target_weight_lbs", "training_role", "rest_seconds", "notes"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["template_id", "rotation_position", "name", "estimated_minutes", "warmups", "notes", "active", "exercises"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
     name: "list_workout_plans",
-    description: "List saved strength workout plans and their IDs, dates, names, statuses, and durations. Use this to locate plans before reading or editing one. Null dates list up to 90 plans.",
+    description: "List dated strength workout session history. Do not use this to decide which workout is next; use list_workout_rotation or get_next_workout.",
     strict: true,
     parameters: {
       type: "object",
@@ -157,14 +235,14 @@ export const assistantTools: FunctionTool[] = [
   {
     type: "function",
     name: "start_workout",
-    description: "Mark today's scheduled strength workout as in progress. Use only when the user asks to start it, then present the saved display-only warmups before the working exercises.",
+    description: "Start or resume the next workout in the rotation. Starting creates a dated session but does not advance the rotation; completion advances it.",
     strict: true,
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
   },
   {
     type: "function",
     name: "return_workout_to_scheduled",
-    description: "Return today's in-progress strength workout to scheduled status without deleting or changing any logged sets. Use only when the user explicitly asks to pause, undo starting, or return today's workout to scheduled.",
+    description: "Pause the active strength session without deleting sets or advancing the rotation.",
     strict: true,
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
   },
@@ -225,7 +303,7 @@ export const assistantTools: FunctionTool[] = [
   {
     type: "function",
     name: "set_exercise_target_weight",
-    description: "Set or clear the planned working weight for this exact occurrence and training role of an exercise in today's workout. Never copy a heavy target to a volume, light, or technique occurrence. Use only when the user supplies the weight or explicitly asks to clear it.",
+    description: "Set or clear the planned working weight for an exercise in the active session or next rotation workout. Never copy a heavy target to a volume, light, or technique occurrence. Use only when the user supplies the weight or explicitly asks to clear it.",
     strict: true,
     parameters: {
       type: "object",
@@ -240,7 +318,7 @@ export const assistantTools: FunctionTool[] = [
   {
     type: "function",
     name: "set_exercise_training_role",
-    description: "Classify one exercise in today's workout as standard, heavy, volume, light, technique, accessory, or bodyweight so its target and progress remain separate from other versions of the same lift.",
+    description: "Classify one exercise in the active session or next rotation workout so its target and progress remain separate from other versions of the same lift.",
     strict: true,
     parameters: {
       type: "object",
@@ -255,7 +333,7 @@ export const assistantTools: FunctionTool[] = [
   {
     type: "function",
     name: "log_set",
-    description: "Create or replace one set for an exercise in today's workout after the user provides the exercise, weight, and reps.",
+    description: "Start the next workout if needed, then create or replace one logged set after the user provides the exercise, weight, and reps.",
     strict: true,
     parameters: {
       type: "object",
@@ -304,7 +382,7 @@ export const assistantTools: FunctionTool[] = [
   {
     type: "function",
     name: "complete_workout",
-    description: "Mark today's strength workout completed after the user explicitly says they are finished, and create its duplicate-safe strength entry in activities. Completion is allowed even when some exercises or target sets were not completed; never invent missing sets or calories.",
+    description: "Complete the active strength session, create its duplicate-safe activity, and advance the persistent rotation pointer exactly once. Never call this merely because a date changed.",
     strict: true,
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
   },
@@ -344,8 +422,42 @@ export async function runAssistantTool(
       });
     case "confirm_activity_import":
       return confirmActivityImport(supabase, userId, String(args.draft_id));
-    case "get_today_workout":
-      return ensureTodayWorkout(supabase, userId);
+    case "get_next_workout":
+      return getCurrentOrNextWorkout(supabase, userId);
+    case "list_workout_rotation":
+      return listWorkoutRotation(supabase, userId);
+    case "get_rotation_workout":
+      return getRotationWorkout(supabase, userId, {
+        template_id: args.template_id == null ? null : String(args.template_id),
+        rotation_position: args.rotation_position == null ? null : Number(args.rotation_position),
+      });
+    case "set_next_workout":
+      return setNextRotationWorkout(supabase, userId, Number(args.rotation_position));
+    case "save_rotation_workout":
+      return saveRotationWorkout(supabase, userId, {
+        template_id: args.template_id == null ? null : String(args.template_id),
+        rotation_position: Number(args.rotation_position),
+        name: String(args.name),
+        estimated_minutes: Number(args.estimated_minutes),
+        warmups: Array.isArray(args.warmups) ? args.warmups.map(String) : [],
+        notes: args.notes == null ? null : String(args.notes),
+        active: args.active === true,
+        exercises: Array.isArray(args.exercises)
+          ? args.exercises.map((item) => {
+              const exercise = item as ToolArguments;
+              return {
+                id: exercise.id == null ? null : String(exercise.id),
+                exercise_name: String(exercise.exercise_name),
+                target_sets: Number(exercise.target_sets),
+                target_reps: Number(exercise.target_reps),
+                target_weight_lbs: exercise.target_weight_lbs == null ? null : Number(exercise.target_weight_lbs),
+                training_role: String(exercise.training_role) as StrengthTrainingRole,
+                rest_seconds: Number(exercise.rest_seconds),
+                notes: exercise.notes == null ? null : String(exercise.notes),
+              };
+            })
+          : [],
+      });
     case "list_workout_plans":
       return listStrengthWorkoutPlans(supabase, userId, {
         date_from: args.date_from == null ? null : String(args.date_from),
@@ -387,7 +499,7 @@ export async function runAssistantTool(
         confirm_destructive: args.confirm_destructive === true,
       });
     case "start_workout":
-      return startTodayWorkout(supabase, userId);
+      return startNextWorkout(supabase, userId);
     case "return_workout_to_scheduled":
       return returnTodayWorkoutToScheduled(supabase, userId);
     case "replace_today_workout":

@@ -59,60 +59,163 @@ export async function listSavedMeals(
   }));
 }
 
-export async function ensureTodayWorkout(
+async function getWorkoutTemplateById(
+  supabase: SupabaseClient,
+  userId: string,
+  templateId: string,
+): Promise<StrengthWorkout> {
+  const [{ data: template, error: templateError }, { data: rows, error: exerciseError }] =
+    await Promise.all([
+      supabase
+        .from("strength_workout_templates")
+        .select("*")
+        .eq("id", templateId)
+        .eq("user_id", userId)
+        .single(),
+      supabase
+        .from("strength_workout_template_exercises")
+        .select("*")
+        .eq("template_id", templateId)
+        .eq("user_id", userId)
+        .order("position"),
+    ]);
+  assertResult(templateError, "load workout rotation template");
+  assertResult(exerciseError, "load workout rotation exercises");
+
+  return {
+    id: template.id,
+    name: template.name,
+    scheduled_for: null,
+    estimated_minutes: template.estimated_minutes,
+    notes: template.notes ?? null,
+    status: "next",
+    started_at: null,
+    completed_at: null,
+    warmups: Array.isArray(template.warmups)
+      ? template.warmups.filter((item: unknown): item is string => typeof item === "string")
+      : [],
+    exercises: (rows ?? []).map((row) => ({
+      id: row.id,
+      exercise_name: row.exercise_name,
+      position: row.position,
+      target_sets: row.target_sets,
+      target_reps: row.target_reps,
+      target_weight_lbs: row.target_weight_lbs == null ? null : Number(row.target_weight_lbs),
+      training_role: row.training_role as StrengthTrainingRole,
+      rest_seconds: row.rest_seconds,
+      notes: row.notes,
+      sets: [],
+    })),
+    is_template: true,
+    template_id: template.id,
+    rotation_position: template.rotation_position,
+  };
+}
+
+async function ensureStarterRotation(supabase: SupabaseClient, userId: string) {
+  const { data: existing, error: existingError } = await supabase
+    .from("strength_workout_templates")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("rotation_position", 1)
+    .maybeSingle();
+  assertResult(existingError, "find starter workout rotation");
+  const created = existing ? { data: existing, error: null } : await supabase
+    .from("strength_workout_templates")
+    .insert({
+      user_id: userId,
+      name: "Lower strength",
+      rotation_position: 1,
+      estimated_minutes: 52,
+    })
+    .select("id")
+    .single();
+  assertResult(created.error, "create starter workout rotation");
+  const template = created.data;
+  if (!template) throw new Error("create starter workout rotation: no template returned");
+
+  const { count, error: countError } = await supabase
+    .from("strength_workout_template_exercises")
+    .select("id", { count: "exact", head: true })
+    .eq("template_id", template.id)
+    .eq("user_id", userId);
+  assertResult(countError, "check starter rotation exercises");
+  if (!count) {
+    const { error: insertError } = await supabase
+      .from("strength_workout_template_exercises")
+      .insert(starterExercises.map((exercise) => ({ ...exercise, template_id: template.id, user_id: userId })));
+    assertResult(insertError, "create starter rotation exercises");
+  }
+
+  const { error: stateError } = await supabase
+    .from("strength_workout_rotation_state")
+    .upsert({ user_id: userId, next_template_id: template.id }, { onConflict: "user_id", ignoreDuplicates: true });
+  assertResult(stateError, "initialize workout rotation");
+  return template.id as string;
+}
+
+async function getNextWorkoutTemplate(supabase: SupabaseClient, userId: string) {
+  const { data: state, error: stateError } = await supabase
+    .from("strength_workout_rotation_state")
+    .select("next_template_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  assertResult(stateError, "load workout rotation state");
+
+  let templateId = state?.next_template_id as string | null | undefined;
+  if (templateId) {
+    const { data: active, error } = await supabase
+      .from("strength_workout_templates")
+      .select("id")
+      .eq("id", templateId)
+      .eq("user_id", userId)
+      .eq("active", true)
+      .maybeSingle();
+    assertResult(error, "validate next workout rotation template");
+    templateId = active?.id;
+  }
+
+  if (!templateId) {
+    const { data: first, error } = await supabase
+      .from("strength_workout_templates")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("active", true)
+      .order("rotation_position")
+      .limit(1)
+      .maybeSingle();
+    assertResult(error, "find first workout rotation template");
+    templateId = first?.id ?? await ensureStarterRotation(supabase, userId);
+    const { error: updateError } = await supabase
+      .from("strength_workout_rotation_state")
+      .upsert({ user_id: userId, next_template_id: templateId, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+    assertResult(updateError, "repair workout rotation state");
+  }
+
+  if (!templateId) throw new Error("No active workout exists in the rotation.");
+  return getWorkoutTemplateById(supabase, userId, templateId);
+}
+
+async function getActiveWorkoutSession(supabase: SupabaseClient, userId: string) {
+  const { data, error } = await supabase
+    .from("strength_workout_plans")
+    .select("id")
+    .eq("user_id", userId)
+    .in("status", ["in_progress", "scheduled"])
+    .not("template_id", "is", null)
+    .order("started_at", { ascending: false, nullsFirst: false })
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  assertResult(error, "load active workout session");
+  return data?.id ? getWorkoutById(supabase, userId, data.id) : null;
+}
+
+export async function getCurrentOrNextWorkout(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<StrengthWorkout> {
-  const today = appDay();
-  const { data: existing, error: existingError } = await supabase
-    .from("strength_workout_plans")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("scheduled_for", today)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  assertResult(existingError, "load today's workout");
-
-  let plan = existing;
-  if (!plan) {
-    const { data, error } = await supabase
-      .from("strength_workout_plans")
-      .upsert(
-        {
-          user_id: userId,
-          name: "Lower strength",
-          scheduled_for: today,
-          estimated_minutes: 52,
-          status: "scheduled",
-        },
-        { onConflict: "user_id,scheduled_for,name" },
-      )
-      .select("*")
-      .single();
-    assertResult(error, "create starter workout");
-    plan = data;
-  }
-
-  const { count, error: countError } = await supabase
-    .from("strength_plan_exercises")
-    .select("id", { count: "exact", head: true })
-    .eq("plan_id", plan.id)
-    .eq("user_id", userId);
-  assertResult(countError, "check workout exercises");
-
-  if (!count) {
-    const { error } = await supabase.from("strength_plan_exercises").insert(
-      starterExercises.map((exercise) => ({
-        ...exercise,
-        plan_id: plan.id,
-        user_id: userId,
-      })),
-    );
-    assertResult(error, "create starter exercises");
-  }
-
-  return getWorkoutById(supabase, userId, plan.id);
+  return (await getActiveWorkoutSession(supabase, userId)) ?? getNextWorkoutTemplate(supabase, userId);
 }
 
 export async function getWorkoutById(
@@ -190,7 +293,135 @@ export async function getWorkoutById(
       ? plan.warmups.filter((item: unknown): item is string => typeof item === "string")
       : [],
     exercises,
+    is_template: false,
+    template_id: plan.template_id ?? null,
+    rotation_position: null,
   };
+}
+
+export async function listWorkoutRotation(supabase: SupabaseClient, userId: string) {
+  const { data, error } = await supabase
+    .from("strength_workout_templates")
+    .select("id,name,rotation_position,estimated_minutes,notes,active")
+    .eq("user_id", userId)
+    .order("rotation_position");
+  assertResult(error, "list workout rotation");
+  return { workouts: data ?? [] };
+}
+
+export async function getRotationWorkout(
+  supabase: SupabaseClient,
+  userId: string,
+  input: { template_id: string | null; rotation_position: number | null },
+) {
+  let query = supabase
+    .from("strength_workout_templates")
+    .select("id")
+    .eq("user_id", userId);
+  query = input.template_id
+    ? query.eq("id", input.template_id)
+    : query.eq("rotation_position", input.rotation_position ?? 1);
+  const { data, error } = await query.maybeSingle();
+  assertResult(error, "find workout rotation template");
+  if (!data) throw new Error("No workout exists at that rotation position.");
+  return getWorkoutTemplateById(supabase, userId, data.id);
+}
+
+export async function setNextRotationWorkout(
+  supabase: SupabaseClient,
+  userId: string,
+  rotationPosition: number,
+) {
+  const workout = await getRotationWorkout(supabase, userId, {
+    template_id: null,
+    rotation_position: rotationPosition,
+  });
+  const { error } = await supabase
+    .from("strength_workout_rotation_state")
+    .upsert(
+      { user_id: userId, next_template_id: workout.id, updated_at: new Date().toISOString() },
+      { onConflict: "user_id" },
+    );
+  assertResult(error, "set next workout in rotation");
+  return workout;
+}
+
+type SaveRotationWorkoutInput = {
+  template_id: string | null;
+  rotation_position: number;
+  name: string;
+  estimated_minutes: number;
+  warmups: string[];
+  notes: string | null;
+  active: boolean;
+  exercises: SaveStrengthWorkoutPlanInput["exercises"];
+};
+
+export async function saveRotationWorkout(
+  supabase: SupabaseClient,
+  userId: string,
+  input: SaveRotationWorkoutInput,
+) {
+  const templatePayload = {
+    user_id: userId,
+    rotation_position: input.rotation_position,
+    name: input.name.trim(),
+    estimated_minutes: input.estimated_minutes,
+    warmups: input.warmups.map((item) => item.trim()).filter(Boolean),
+    notes: input.notes?.trim() || null,
+    active: input.active,
+    updated_at: new Date().toISOString(),
+  };
+  const result = input.template_id
+    ? await supabase
+        .from("strength_workout_templates")
+        .update(templatePayload)
+        .eq("id", input.template_id)
+        .eq("user_id", userId)
+        .select("id")
+        .single()
+    : await supabase
+        .from("strength_workout_templates")
+        .insert(templatePayload)
+        .select("id")
+        .single();
+  assertResult(result.error, "save workout rotation template");
+  if (!result.data) throw new Error("save workout rotation template: no template returned");
+  const templateId = result.data.id as string;
+
+  const { error: deleteError } = await supabase
+    .from("strength_workout_template_exercises")
+    .delete()
+    .eq("template_id", templateId)
+    .eq("user_id", userId);
+  assertResult(deleteError, "replace workout rotation exercises");
+  if (input.exercises.length) {
+    const { error: insertError } = await supabase
+      .from("strength_workout_template_exercises")
+      .insert(input.exercises.map((exercise, index) => ({
+        template_id: templateId,
+        user_id: userId,
+        exercise_name: exercise.exercise_name.trim(),
+        position: index + 1,
+        target_sets: exercise.target_sets,
+        target_reps: exercise.target_reps,
+        target_weight_lbs: exercise.target_weight_lbs,
+        training_role: exercise.training_role,
+        rest_seconds: exercise.rest_seconds,
+        notes: exercise.notes?.trim() || null,
+      })));
+    assertResult(insertError, "save workout rotation exercises");
+  }
+
+  const { data: state } = await supabase
+    .from("strength_workout_rotation_state")
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!state && input.active) {
+    await setNextRotationWorkout(supabase, userId, input.rotation_position);
+  }
+  return getWorkoutTemplateById(supabase, userId, templateId);
 }
 
 export async function listStrengthWorkoutPlans(
@@ -566,24 +797,63 @@ export async function confirmActivityImport(
   return data;
 }
 
-export async function startTodayWorkout(supabase: SupabaseClient, userId: string) {
-  const workout = await ensureTodayWorkout(supabase, userId);
-  if (workout.status === "completed") return workout;
+export async function startNextWorkout(supabase: SupabaseClient, userId: string) {
+  const current = await getCurrentOrNextWorkout(supabase, userId);
+  if (!current.is_template) {
+    if (current.status === "in_progress") return current;
+    const { error } = await supabase
+      .from("strength_workout_plans")
+      .update({ status: "in_progress", started_at: current.started_at ?? new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq("id", current.id)
+      .eq("user_id", userId);
+    assertResult(error, "resume workout");
+    return getWorkoutById(supabase, userId, current.id);
+  }
 
-  const { error } = await supabase
+  const { data: plan, error } = await supabase
     .from("strength_workout_plans")
-    .update({ status: "in_progress", started_at: workout.started_at ?? new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq("id", workout.id)
-    .eq("user_id", userId);
-  assertResult(error, "start workout");
-  return getWorkoutById(supabase, userId, workout.id);
+    .insert({
+      user_id: userId,
+      template_id: current.template_id,
+      name: current.name,
+      scheduled_for: appDay(),
+      estimated_minutes: current.estimated_minutes,
+      warmups: current.warmups,
+      notes: current.notes,
+      status: "in_progress",
+      started_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+  assertResult(error, "start next workout");
+  if (!plan) throw new Error("start next workout: no session returned");
+
+  if (current.exercises.length) {
+    const { error: exerciseError } = await supabase
+      .from("strength_plan_exercises")
+      .insert(current.exercises.map((exercise) => ({
+        plan_id: plan.id,
+        user_id: userId,
+        exercise_name: exercise.exercise_name,
+        position: exercise.position,
+        target_sets: exercise.target_sets,
+        target_reps: exercise.target_reps,
+        target_weight_lbs: exercise.target_weight_lbs,
+        training_role: exercise.training_role,
+        rest_seconds: exercise.rest_seconds,
+        notes: exercise.notes,
+      })));
+    assertResult(exerciseError, "copy next workout exercises");
+  }
+  return getWorkoutById(supabase, userId, plan.id);
 }
 
 export async function returnTodayWorkoutToScheduled(
   supabase: SupabaseClient,
   userId: string,
 ) {
-  const workout = await ensureTodayWorkout(supabase, userId);
+  const workout = await getActiveWorkoutSession(supabase, userId);
+  if (!workout) throw new Error("There is no active workout to pause.");
   const { data, error } = await supabase.rpc("return_strength_workout_to_scheduled", {
     p_user_id: userId,
     p_plan_id: workout.id,
@@ -619,7 +889,8 @@ export async function replaceTodayWorkout(
     confirm_destructive: boolean;
   },
 ) {
-  const currentWorkout = await ensureTodayWorkout(supabase, userId);
+  const currentWorkout = await getActiveWorkoutSession(supabase, userId);
+  if (!currentWorkout) throw new Error("Start the next workout before replacing the active session.");
   const { data, error } = await supabase.rpc("replace_today_strength_workout", {
     p_user_id: userId,
     p_plan_id: currentWorkout.id,
@@ -650,7 +921,7 @@ export async function setTodayWorkoutWarmups(
   userId: string,
   warmups: string[],
 ) {
-  const workout = await ensureTodayWorkout(supabase, userId);
+  const workout = await getCurrentOrNextWorkout(supabase, userId);
   const cleaned = warmups.map((item) => item.trim()).filter(Boolean);
   if (cleaned.length > 10) throw new Error("A workout can have at most 10 warm-up items.");
   if (cleaned.some((item) => item.length > 160)) {
@@ -658,14 +929,16 @@ export async function setTodayWorkoutWarmups(
   }
 
   const { error } = await supabase
-    .from("strength_workout_plans")
+    .from(workout.is_template ? "strength_workout_templates" : "strength_workout_plans")
     .update({ warmups: cleaned, updated_at: new Date().toISOString() })
     .eq("id", workout.id)
     .eq("user_id", userId)
     .select("id")
     .single();
   assertResult(error, "update workout warm-ups");
-  return getWorkoutById(supabase, userId, workout.id);
+  return workout.is_template
+    ? getWorkoutTemplateById(supabase, userId, workout.id)
+    : getWorkoutById(supabase, userId, workout.id);
 }
 
 async function findExercise(
@@ -673,7 +946,7 @@ async function findExercise(
   userId: string,
   exerciseName: string,
 ) {
-  const workout = await ensureTodayWorkout(supabase, userId);
+  const workout = await getCurrentOrNextWorkout(supabase, userId);
   const direct = workout.exercises.find(
     (exercise) => exercise.exercise_name.toLowerCase() === exerciseName.toLowerCase(),
   );
@@ -681,7 +954,7 @@ async function findExercise(
     exercise.exercise_name.toLowerCase().includes(exerciseName.toLowerCase()),
   );
   const exercise = direct ?? partial;
-  if (!exercise) throw new Error(`Exercise not found in today's workout: ${exerciseName}`);
+  if (!exercise) throw new Error(`Exercise not found in the current or next workout: ${exerciseName}`);
   return { workout, exercise };
 }
 
@@ -700,14 +973,16 @@ export async function setExerciseTargetWeight(
     throw new Error("Target weight must be between 0 and 3000 lb.");
   }
   const { error } = await supabase
-    .from("strength_plan_exercises")
+    .from(workout.is_template ? "strength_workout_template_exercises" : "strength_plan_exercises")
     .update({ target_weight_lbs: input.target_weight_lbs })
     .eq("id", exercise.id)
     .eq("user_id", userId)
     .select("id")
     .single();
   assertResult(error, "update exercise target weight");
-  return getWorkoutById(supabase, userId, workout.id);
+  return workout.is_template
+    ? getWorkoutTemplateById(supabase, userId, workout.id)
+    : getWorkoutById(supabase, userId, workout.id);
 }
 
 const strengthTrainingRoles = new Set<StrengthTrainingRole>([
@@ -730,14 +1005,16 @@ export async function setExerciseTrainingRole(
   }
   const { workout, exercise } = await findExercise(supabase, userId, input.exercise_name);
   const { error } = await supabase
-    .from("strength_plan_exercises")
+    .from(workout.is_template ? "strength_workout_template_exercises" : "strength_plan_exercises")
     .update({ training_role: input.training_role })
     .eq("id", exercise.id)
     .eq("user_id", userId)
     .select("id")
     .single();
   assertResult(error, "update exercise training role");
-  return getWorkoutById(supabase, userId, workout.id);
+  return workout.is_template
+    ? getWorkoutTemplateById(supabase, userId, workout.id)
+    : getWorkoutById(supabase, userId, workout.id);
 }
 
 export async function logStrengthSet(
@@ -745,7 +1022,8 @@ export async function logStrengthSet(
   userId: string,
   input: { exercise_name: string; weight_lbs: number; reps: number; set_number?: number; rir?: number; notes?: string },
 ) {
-  const { workout, exercise } = await findExercise(supabase, userId, input.exercise_name);
+  await startNextWorkout(supabase, userId);
+  const { exercise } = await findExercise(supabase, userId, input.exercise_name);
   const setNumber = input.set_number ?? exercise.sets.length + 1;
 
   const { data, error } = await supabase
@@ -769,7 +1047,6 @@ export async function logStrengthSet(
   assertResult(error, "log set");
   if (!data) throw new Error("Unable to read the saved set.");
 
-  if (workout.status === "scheduled") await startTodayWorkout(supabase, userId);
   return { ...data, weight_lbs: Number(data.weight_lbs), rir: data.rir == null ? null : Number(data.rir) };
 }
 
@@ -807,7 +1084,8 @@ export async function deleteStrengthSet(
 }
 
 export async function completeTodayWorkout(supabase: SupabaseClient, userId: string) {
-  const workout = await ensureTodayWorkout(supabase, userId);
+  const workout = await getActiveWorkoutSession(supabase, userId);
+  if (!workout) throw new Error("There is no active workout to complete. Start the next workout first.");
   const { data, error } = await supabase.rpc("complete_strength_workout", {
     p_user_id: userId,
     p_plan_id: workout.id,

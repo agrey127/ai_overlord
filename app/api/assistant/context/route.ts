@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/supabase/authenticated";
 import {
   createConversation,
-  ensureTodayWorkout,
+  getCurrentOrNextWorkout,
   getMessages,
   listSavedMeals,
   listConversations,
@@ -18,14 +18,14 @@ export async function GET(request: Request) {
     const requestedConversationId = url.searchParams.get("conversationId");
 
     const [workout, initialConversations, savedMeals] = await Promise.all([
-      ensureTodayWorkout(supabase, userId),
+      getCurrentOrNextWorkout(supabase, userId),
       listConversations(supabase, userId),
       listSavedMeals(supabase, userId),
     ]);
 
     let conversations = initialConversations;
     if (!conversations.length) {
-      await createConversation(supabase, userId, "Today’s training", "strength");
+      await createConversation(supabase, userId, "Next workout", "strength");
       conversations = await listConversations(supabase, userId);
     }
 

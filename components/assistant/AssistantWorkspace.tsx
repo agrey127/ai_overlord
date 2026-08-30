@@ -8,15 +8,15 @@ import { assistantRequestsConfirmation, CONFIRMATION_REPLY } from "@/lib/assista
 import styles from "./AssistantWorkspace.module.css";
 
 const demoWorkout: StrengthWorkout = {
-  id: "preview", name: "Lower strength", scheduled_for: "2026-08-02", estimated_minutes: 52, notes: null,
-  status: "scheduled", started_at: null, completed_at: null,
+  id: "preview", name: "Day 1 · Lower strength", scheduled_for: null, estimated_minutes: 52, notes: null,
+  status: "next", started_at: null, completed_at: null, is_template: true, template_id: "preview", rotation_position: 1,
   warmups: ["5 minutes of easy movement", "Dynamic mobility for the primary lift", "2–4 gradual ramp-up sets"],
   exercises: [["Back squat",4,5,"heavy"],["Romanian deadlift",3,8,"technique"],["Walking lunge",3,10,"accessory"],["Standing calf raise",3,12,"accessory"]].map(([name,sets,reps,role], i) => ({
     id: `preview-${i}`, exercise_name: String(name), position: i + 1, target_sets: Number(sets), target_reps: Number(reps), target_weight_lbs: null, training_role: String(role) as StrengthWorkout["exercises"][number]["training_role"], rest_seconds: 120, notes: null, sets: [],
   })),
 };
 const demoConversations: AssistantConversation[] = [
-  { id: "demo-training", title: "Today’s training", domain: "strength", updated_at: new Date().toISOString() },
+  { id: "demo-training", title: "Next workout", domain: "strength", updated_at: new Date().toISOString() },
   { id: "demo-review", title: "Weekly review", domain: "planning", updated_at: new Date().toISOString() },
   { id: "demo-meals", title: "Meal planning", domain: "nutrition", updated_at: new Date().toISOString() },
 ];
@@ -322,7 +322,7 @@ export default function AssistantWorkspace() {
         <p className={styles.privacy}>{signedIn ? "Synced privately to your account" : "Preview mode · sign in to save"}</p>
       </aside>
       <section className={styles.chatPanel} aria-label="Assistant conversation">
-        <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>{isNutritionChat ? "Saved meals" : "Today’s training"}</small>{isNutritionChat ? `${savedMeals.length} meal${savedMeals.length === 1 ? "" : "s"}` : workout.name}</span><Icon name="chevron" /></button>
+        <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>{isNutritionChat ? "Saved meals" : "Next workout"}</small>{isNutritionChat ? `${savedMeals.length} meal${savedMeals.length === 1 ? "" : "s"}` : workout.name}</span><Icon name="chevron" /></button>
         {contextOpen && (isNutritionChat ? <NutritionMealsCard meals={savedMeals} signedIn={signedIn} onRequireAuth={() => setAuthOpen(true)} mobile /> : <WorkoutCard workout={workout} mobile />)}
         <div className={styles.messages} aria-live="polite">
           {messages.map((message) => message.role !== "tool" && <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>{message.role === "assistant" && <span className={styles.avatar}><Icon name="spark" /></span>}<div><span className={styles.speaker}>{message.role === "user" ? "You" : "Baseline"}</span><p>{message.content}</p></div></article>)}
@@ -330,7 +330,7 @@ export default function AssistantWorkspace() {
         </div>
         {isStrengthChat || confirmationRequired ? <div className={styles.quickActions}>
           {confirmationRequired ? <button disabled={loading} onClick={() => void sendMessage(CONFIRMATION_REPLY)}>Confirm</button> : null}
-          {isStrengthChat && workout.status !== "completed" ? <button disabled={loading} onClick={() => void sendMessage(workout.status === "in_progress" ? "Finish today's workout." : "Start today's workout.")}>{workout.status === "in_progress" ? "Finish workout" : "Start workout"}</button> : null}
+          {isStrengthChat && workout.status !== "completed" ? <button disabled={loading} onClick={() => void sendMessage(workout.status === "in_progress" ? "Finish my current workout." : "Start my next workout.")}>{workout.status === "in_progress" ? "Finish workout" : "Start workout"}</button> : null}
           {isStrengthChat ? <button disabled={loading} onClick={() => void sendMessage("Help me log my next set.")}>Log a set</button> : null}
           {isStrengthChat ? <button className={styles.reviewAction} disabled={loading} onClick={() => void sendMessage("Review my recent strength progress.")}>Review progress</button> : null}
         </div> : null}
@@ -439,9 +439,9 @@ function WorkoutCard({ workout, mobile = false }: { workout: StrengthWorkout; mo
   const completed = workout.exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0);
   const target = workout.exercises.reduce((sum, exercise) => sum + exercise.target_sets, 0);
   return <section className={mobile ? styles.workoutMobile : styles.workoutCard}>
-    <div className={styles.workoutEyebrow}><span>Today’s training</span><span>{workout.estimated_minutes} min</span></div>
+    <div className={styles.workoutEyebrow}><span>{workout.status === "in_progress" ? "Current workout" : "Next workout"}</span><span>{workout.estimated_minutes} min</span></div>
     <h2>{workout.name}</h2>
-    <div className={styles.statusRow}><span className={styles.statusDot} />{workout.status.replace("_", " ")}<span>{completed}/{target} sets</span></div>
+    <div className={styles.statusRow}><span className={styles.statusDot} />{workout.status === "next" ? "next in rotation" : workout.status.replace("_", " ")}<span>{completed}/{target} sets</span></div>
     {workout.warmups.length > 0 ? <section className={styles.warmupBlock} aria-label="Warm-up checklist">
       <span className={styles.warmupLabel}>Warm-up · not tracked</span>
       <ul>{workout.warmups.map((warmup) => <li key={warmup}>{warmup}</li>)}</ul>
