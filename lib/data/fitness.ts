@@ -218,3 +218,102 @@ export async function fetchRaceReadiness(userId: string) {
   if (error) throw new Error(`v_race_readiness: ${error.message}`);
   return oneRow<RaceReadinessRow>(data);
 }
+
+export type StrengthWeeklySummary = {
+  workouts_last_7d: number;
+  average_workouts_per_week_8w: number;
+  prior_week_volume_lbs: number;
+  preceding_week_volume_lbs: number;
+  volume_difference_lbs: number;
+  volume_difference_percent: number | null;
+  prior_week_start: string;
+  prior_week_end: string;
+};
+
+const FITNESS_TIME_ZONE = process.env.APP_TIME_ZONE ?? "America/Indiana/Indianapolis";
+
+function localDay(value: Date) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: FITNESS_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(value).map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function shiftDay(day: string, amount: number) {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+function mondayOfWeek(day: string) {
+  const date = new Date(`${day}T12:00:00Z`);
+  return shiftDay(day, -((date.getUTCDay() + 6) % 7));
+}
+
+export async function fetchStrengthWeeklySummary(userId: string): Promise<StrengthWeeklySummary> {
+  const supabase = supabaseClient();
+  const today = localDay(new Date());
+  const rollingStart = shiftDay(today, -6);
+  const averageStart = shiftDay(today, -55);
+  const currentWeekStart = mondayOfWeek(today);
+  const priorWeekStart = shiftDay(currentWeekStart, -7);
+  const priorWeekEnd = shiftDay(currentWeekStart, -1);
+  const precedingWeekStart = shiftDay(currentWeekStart, -14);
+  const broadQueryStart = new Date(Date.now() - 65 * 86_400_000).toISOString();
+  const volumeQueryStart = `${precedingWeekStart}T00:00:00Z`;
+  const volumeQueryEnd = `${currentWeekStart}T12:00:00Z`;
+
+  const [workoutResult, setResult] = await Promise.all([
+    supabase
+      .from("strength_workout_plans")
+      .select("id,completed_at")
+      .eq("user_id", userId)
+      .eq("status", "completed")
+      .not("completed_at", "is", null)
+      .gte("completed_at", broadQueryStart),
+    supabase
+      .from("strength_sets")
+      .select("completed_at,weight_lbs,reps")
+      .eq("user_id", userId)
+      .gte("completed_at", volumeQueryStart)
+      .lt("completed_at", volumeQueryEnd),
+  ]);
+
+  if (workoutResult.error) throw new Error(`strength workout history: ${workoutResult.error.message}`);
+  if (setResult.error) throw new Error(`strength set history: ${setResult.error.message}`);
+
+  const workoutDays = (workoutResult.data ?? [])
+    .map((workout) => workout.completed_at ? localDay(new Date(workout.completed_at)) : null)
+    .filter((day): day is string => day !== null);
+  const workoutsLast7d = workoutDays.filter((day) => day >= rollingStart && day <= today).length;
+  const workoutsLast8w = workoutDays.filter((day) => day >= averageStart && day <= today).length;
+
+  let priorWeekVolume = 0;
+  let precedingWeekVolume = 0;
+  for (const set of setResult.data ?? []) {
+    const day = localDay(new Date(set.completed_at));
+    const volume = Number(set.weight_lbs) * Number(set.reps);
+    if (!Number.isFinite(volume)) continue;
+    if (day >= priorWeekStart && day < currentWeekStart) priorWeekVolume += volume;
+    if (day >= precedingWeekStart && day < priorWeekStart) precedingWeekVolume += volume;
+  }
+
+  const volumeDifference = priorWeekVolume - precedingWeekVolume;
+  return {
+    workouts_last_7d: workoutsLast7d,
+    average_workouts_per_week_8w: workoutsLast8w / 8,
+    prior_week_volume_lbs: priorWeekVolume,
+    preceding_week_volume_lbs: precedingWeekVolume,
+    volume_difference_lbs: volumeDifference,
+    volume_difference_percent: precedingWeekVolume > 0
+      ? volumeDifference / precedingWeekVolume * 100
+      : null,
+    prior_week_start: priorWeekStart,
+    prior_week_end: priorWeekEnd,
+  };
+}

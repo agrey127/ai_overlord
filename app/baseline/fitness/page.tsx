@@ -13,6 +13,7 @@ import {
   fetchLoadRecoveryBalance,
   fetchRaceReadiness,
   fetchStepsSummary,
+  fetchStrengthWeeklySummary,
 } from "@/lib/data/fitness";
 
 const USER_ID = "agrey127@gmail.com";
@@ -29,6 +30,17 @@ function fmt0(x: number | null | undefined) {
 function fmtDate(d: string | null | undefined) {
   if (!d) return "—";
   return d.slice(0, 10);
+}
+
+function fmtWeight(x: number | null | undefined) {
+  return typeof x === "number" && Number.isFinite(x)
+    ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.round(x))
+    : "—";
+}
+
+function fmtShortDate(d: string) {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+    .format(new Date(`${d}T12:00:00Z`));
 }
 
 function dotColor(color: string | null | undefined) {
@@ -89,13 +101,14 @@ function trendMeta(current: number | null | undefined, baseline: number | null |
 }
 
 export default async function FitnessPage() {
-  const [gate, consistency, longrun, balance, race, steps] = await Promise.all([
+  const [gate, consistency, longrun, balance, race, steps, strength] = await Promise.all([
     fetchReadinessStatus(USER_ID),
     fetchRunConsistency(USER_ID),
     fetchLongRunProgression(USER_ID),
     fetchLoadRecoveryBalance(USER_ID),
     fetchRaceReadiness(USER_ID),
     fetchStepsSummary(USER_ID),
+    fetchStrengthWeeklySummary(USER_ID),
   ]);
 
   const gateColor = (gate?.readiness_color ?? "gray").toLowerCase();
@@ -140,6 +153,8 @@ export default async function FitnessPage() {
   const stepsTrend = trendMeta(steps?.steps_avg_7d, steps?.steps_avg_30d, 150);
   const sleepTrend = trendMeta(gate?.sleep_avg_3d, gate?.sleep_score ? gate.sleep_score - (gate?.sleep_delta_3v30 ?? 0) : null, 1);
   const rhrTrend = trendMeta(gate?.rhr_avg_3d, gate?.rhr_avg_3d != null && gate?.rhr_delta_3v30 != null ? gate.rhr_avg_3d - gate.rhr_delta_3v30 : null, 0.5);
+  const workoutTrend = trendMeta(strength.workouts_last_7d, strength.average_workouts_per_week_8w, 0.25);
+  const volumeTrend = trendMeta(strength.prior_week_volume_lbs, strength.preceding_week_volume_lbs, 1);
 
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: "20px 16px 90px" }}>
@@ -398,6 +413,65 @@ export default async function FitnessPage() {
 
             <div className="card-muted" style={{ marginTop: 8, fontSize: 13 }}>
               Load/Recovery flag: <strong>{balance?.overreach_risk ? "ON" : "off"}</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        style={{
+          marginTop: 14,
+          display: "grid",
+          gap: 12,
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+        }}
+      >
+        <div className="card">
+          <div className="card-inner">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div className="card-title">Strength Workouts</div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: workoutTrend.color }}>
+                {workoutTrend.symbol}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 30, fontWeight: 950 }}>
+              {strength.workouts_last_7d}
+              <span className="card-muted" style={{ fontSize: 13, fontWeight: 650, marginLeft: 9 }}>
+                workouts
+              </span>
+            </div>
+
+            <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
+              Last 7 days
+            </div>
+            <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
+              8-week average: {strength.average_workouts_per_week_8w.toFixed(1)} / week
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-inner">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div className="card-title">Weight Moved</div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: volumeTrend.color }}>
+                {volumeTrend.symbol}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 30, fontWeight: 950 }}>
+              {fmtWeight(strength.prior_week_volume_lbs)} lb
+            </div>
+
+            <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
+              {(strength.prior_week_volume_lbs / 2000).toFixed(1)} tons · {fmtShortDate(strength.prior_week_start)}–{fmtShortDate(strength.prior_week_end)} · weight × reps
+            </div>
+            <div className="card-muted" style={{ marginTop: 6, fontSize: 13 }}>
+              {strength.volume_difference_lbs > 0 ? "+" : ""}{fmtWeight(strength.volume_difference_lbs)} lb vs prior week
+              {strength.volume_difference_percent == null
+                ? ""
+                : ` · ${strength.volume_difference_percent > 0 ? "+" : ""}${strength.volume_difference_percent.toFixed(1)}%`}
             </div>
           </div>
         </div>
