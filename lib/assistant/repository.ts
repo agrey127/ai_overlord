@@ -211,6 +211,120 @@ async function getActiveWorkoutSession(supabase: SupabaseClient, userId: string)
   return data?.id ? getWorkoutById(supabase, userId, data.id) : null;
 }
 
+export type SavedMealLogInput = {
+  saved_meal_id: string;
+  meal_type: "breakfast" | "lunch" | "dinner" | "snack";
+  servings: number;
+  confirm: boolean;
+};
+
+function dateInTimeZone(timeZone: string) {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date());
+  } catch {
+    throw new Error("Your saved timezone is invalid. Update it under More → Profile & goals.");
+  }
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function scaledNutritionValue(value: unknown, servings: number) {
+  if (value == null) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.round(number * servings * 100) / 100 : null;
+}
+
+export async function logSavedMeal(
+  supabase: SupabaseClient,
+  userId: string,
+  input: SavedMealLogInput,
+) {
+  if (!["breakfast", "lunch", "dinner", "snack"].includes(input.meal_type)) {
+    throw new Error("Choose breakfast, lunch, dinner, or snack.");
+  }
+  if (!Number.isFinite(input.servings) || input.servings <= 0 || input.servings > 20) {
+    throw new Error("Servings must be between 0.01 and 20.");
+  }
+
+  const [mealResult, preferenceResult] = await Promise.all([
+    supabase
+      .from("saved_meals")
+      .select("id,name,description,calories,protein_g,carbs_g,fat_g,saturated_fat_g,fiber_g,soluble_fiber_g,sugar_g,sodium_mg")
+      .eq("id", input.saved_meal_id)
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("user_training_preferences")
+      .select("timezone")
+      .eq("user_id", userId)
+      .maybeSingle(),
+  ]);
+  assertResult(mealResult.error, "load saved meal");
+  assertResult(preferenceResult.error, "load timezone");
+  if (!mealResult.data) throw new Error("That saved meal was not found in your account.");
+  if (mealResult.data.calories == null) {
+    throw new Error("Add calories to this saved meal before logging it.");
+  }
+
+  const meal = mealResult.data;
+  const servings = input.servings;
+  const mealDate = dateInTimeZone(
+    preferenceResult.data?.timezone ?? "America/Indiana/Indianapolis",
+  );
+  const preview = {
+    saved_meal_id: meal.id,
+    meal_name: meal.name,
+    meal_type: input.meal_type,
+    meal_date: mealDate,
+    servings,
+    calories: scaledNutritionValue(meal.calories, servings),
+    protein_g: scaledNutritionValue(meal.protein_g, servings),
+    carbs_g: scaledNutritionValue(meal.carbs_g, servings),
+    fat_g: scaledNutritionValue(meal.fat_g, servings),
+  };
+
+  if (!input.confirm) {
+    return { logged: false, confirmation_required: true, preview };
+  }
+
+  const { data, error } = await supabase
+    .from("meal_logs")
+    .insert({
+      user_id: userId,
+      meal_type: input.meal_type,
+      meal_date: mealDate,
+      logged_at: new Date().toISOString(),
+      food_name: meal.name,
+      description: meal.description ?? meal.name,
+      saved_meal_id: meal.id,
+      serving_size: `${servings} serving${servings === 1 ? "" : "s"}`,
+      calories: preview.calories,
+      protein_g: preview.protein_g,
+      carbs_g: preview.carbs_g,
+      fat_g: preview.fat_g,
+      saturated_fat_g: scaledNutritionValue(meal.saturated_fat_g, servings),
+      fiber_g: scaledNutritionValue(meal.fiber_g, servings),
+      soluble_fiber_g: scaledNutritionValue(meal.soluble_fiber_g, servings),
+      sugar_g: scaledNutritionValue(meal.sugar_g, servings),
+      sodium_mg: scaledNutritionValue(meal.sodium_mg, servings),
+    })
+    .select("id,meal_type,meal_date,calories,protein_g,carbs_g,fat_g")
+    .single();
+  assertResult(error, "log saved meal");
+
+  return {
+    logged: true,
+    confirmation_required: false,
+    meal: { ...data, meal_name: meal.name, servings },
+  };
+}
+
 export async function getCurrentOrNextWorkout(
   supabase: SupabaseClient,
   userId: string,

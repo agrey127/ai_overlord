@@ -10,8 +10,10 @@ import {
   getRotationWorkout,
   getStrengthWorkoutPlan,
   getStrengthProgress,
+  listSavedMeals,
   listStrengthWorkoutPlans,
   listWorkoutRotation,
+  logSavedMeal,
   logStrengthSet,
   prepareActivityImport,
   replaceTodayWorkout,
@@ -27,6 +29,30 @@ import {
 } from "@/lib/assistant/repository";
 
 export const assistantTools: FunctionTool[] = [
+  {
+    type: "function",
+    name: "list_saved_meals",
+    description: "List the signed-in user's saved meals with exact IDs and per-serving calories and macros. Use this to resolve a saved meal by name before logging it. This is read-only.",
+    strict: true,
+    parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  {
+    type: "function",
+    name: "log_saved_meal",
+    description: "Preview or log one saved meal for the signed-in user. First call with confirm=false and show the returned preview. Call again with the same saved meal ID, meal type, and servings and confirm=true only after the user explicitly confirms that preview.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        saved_meal_id: { type: "string", description: "Exact ID returned by list_saved_meals." },
+        meal_type: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+        servings: { type: "number", minimum: 0.01, maximum: 20 },
+        confirm: { type: "boolean" },
+      },
+      required: ["saved_meal_id", "meal_type", "servings", "confirm"],
+      additionalProperties: false,
+    },
+  },
   {
     type: "function",
     name: "prepare_activity_import",
@@ -407,6 +433,15 @@ export async function runAssistantTool(
   const args = (rawArguments ? JSON.parse(rawArguments) : {}) as ToolArguments;
 
   switch (name) {
+    case "list_saved_meals":
+      return { meals: await listSavedMeals(supabase, userId) };
+    case "log_saved_meal":
+      return logSavedMeal(supabase, userId, {
+        saved_meal_id: String(args.saved_meal_id),
+        meal_type: String(args.meal_type) as "breakfast" | "lunch" | "dinner" | "snack",
+        servings: Number(args.servings),
+        confirm: args.confirm === true,
+      });
     case "prepare_activity_import":
       if (!context?.conversationId) throw new Error("Activity imports require a conversation.");
       return prepareActivityImport(supabase, userId, context.conversationId, {
