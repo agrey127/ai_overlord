@@ -3,6 +3,7 @@ import type { FunctionTool } from "openai/resources/responses/responses";
 import type { ActivityType, StrengthTrainingRole } from "@/lib/assistant/types";
 import {
   confirmActivityImport,
+  confirmEstimatedMeal,
   completeTodayWorkout,
   deleteStrengthWorkoutPlan,
   deleteStrengthSet,
@@ -16,6 +17,7 @@ import {
   logSavedMeal,
   logStrengthSet,
   prepareActivityImport,
+  prepareEstimatedMeal,
   replaceTodayWorkout,
   returnTodayWorkoutToScheduled,
   saveStrengthWorkoutPlan,
@@ -50,6 +52,52 @@ export const assistantTools: FunctionTool[] = [
         confirm: { type: "boolean" },
       },
       required: ["saved_meal_id", "meal_type", "servings", "confirm"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "prepare_estimated_meal",
+    description: "Create a confirmation-required nutrition estimate for food that is not being logged from the saved-meal library. Use a reasonable typical serving when the user's wording supports one and state every important assumption. Pass meal_date=null and days_ago=0 for today, or days_ago=1 for yesterday. For an explicitly named calendar date, pass that YYYY-MM-DD date and days_ago=0. This only prepares a draft and never logs food.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        food_name: { type: "string", minLength: 1, maxLength: 160 },
+        description: { type: "string", minLength: 1, maxLength: 1000 },
+        serving_size: { type: "string", minLength: 1, maxLength: 160 },
+        meal_type: { type: "string", enum: ["breakfast", "lunch", "dinner", "snack"] },
+        meal_date: { type: ["string", "null"], description: "Exact YYYY-MM-DD date, or null to resolve from days_ago." },
+        days_ago: { type: "integer", minimum: 0, maximum: 3650, description: "0 for today, 1 for yesterday. Use 0 when meal_date is not null." },
+        calories: { type: "number", minimum: 0, maximum: 10000 },
+        protein_g: { type: "number", minimum: 0, maximum: 2000 },
+        carbs_g: { type: "number", minimum: 0, maximum: 2000 },
+        fat_g: { type: "number", minimum: 0, maximum: 2000 },
+        saturated_fat_g: { type: ["number", "null"], minimum: 0, maximum: 1000 },
+        fiber_g: { type: ["number", "null"], minimum: 0, maximum: 1000 },
+        soluble_fiber_g: { type: ["number", "null"], minimum: 0, maximum: 1000 },
+        sugar_g: { type: ["number", "null"], minimum: 0, maximum: 2000 },
+        sodium_mg: { type: ["number", "null"], minimum: 0, maximum: 100000 },
+        assumptions: {
+          type: "array",
+          minItems: 0,
+          maxItems: 8,
+          items: { type: "string", maxLength: 300 },
+        },
+      },
+      required: ["food_name", "description", "serving_size", "meal_type", "meal_date", "days_ago", "calories", "protein_g", "carbs_g", "fat_g", "saturated_fat_g", "fiber_g", "soluble_fiber_g", "sugar_g", "sodium_mg", "assumptions"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "confirm_estimated_meal",
+    description: "Log one previously prepared nutrition estimate. Call only after the user explicitly confirms the displayed estimate, using the exact pending draft ID from prepare_estimated_meal. Repeated confirmation of the same draft is idempotent.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: { draft_id: { type: "string" } },
+      required: ["draft_id"],
       additionalProperties: false,
     },
   },
@@ -442,6 +490,28 @@ export async function runAssistantTool(
         servings: Number(args.servings),
         confirm: args.confirm === true,
       });
+    case "prepare_estimated_meal":
+      if (!context?.conversationId) throw new Error("Meal estimates require a conversation.");
+      return prepareEstimatedMeal(supabase, userId, context.conversationId, {
+        food_name: String(args.food_name),
+        description: String(args.description),
+        serving_size: String(args.serving_size),
+        meal_type: String(args.meal_type) as "breakfast" | "lunch" | "dinner" | "snack",
+        meal_date: args.meal_date == null ? null : String(args.meal_date),
+        days_ago: Number(args.days_ago),
+        calories: Number(args.calories),
+        protein_g: Number(args.protein_g),
+        carbs_g: Number(args.carbs_g),
+        fat_g: Number(args.fat_g),
+        saturated_fat_g: args.saturated_fat_g == null ? null : Number(args.saturated_fat_g),
+        fiber_g: args.fiber_g == null ? null : Number(args.fiber_g),
+        soluble_fiber_g: args.soluble_fiber_g == null ? null : Number(args.soluble_fiber_g),
+        sugar_g: args.sugar_g == null ? null : Number(args.sugar_g),
+        sodium_mg: args.sodium_mg == null ? null : Number(args.sodium_mg),
+        assumptions: Array.isArray(args.assumptions) ? args.assumptions.map(String) : [],
+      });
+    case "confirm_estimated_meal":
+      return confirmEstimatedMeal(supabase, userId, String(args.draft_id));
     case "prepare_activity_import":
       if (!context?.conversationId) throw new Error("Activity imports require a conversation.");
       return prepareActivityImport(supabase, userId, context.conversationId, {

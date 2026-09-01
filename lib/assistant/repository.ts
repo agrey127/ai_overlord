@@ -325,6 +325,137 @@ export async function logSavedMeal(
   };
 }
 
+export type EstimatedMealDraftInput = {
+  food_name: string;
+  description: string;
+  serving_size: string;
+  meal_type: "breakfast" | "lunch" | "dinner" | "snack";
+  meal_date: string | null;
+  days_ago: number;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  saturated_fat_g: number | null;
+  fiber_g: number | null;
+  soluble_fiber_g: number | null;
+  sugar_g: number | null;
+  sodium_mg: number | null;
+  assumptions: string[];
+};
+
+function estimatedNutritionNumber(
+  value: number | null,
+  label: string,
+  maximum: number,
+) {
+  if (value == null) return null;
+  if (!Number.isFinite(value) || value < 0 || value > maximum) {
+    throw new Error(`${label} must be between 0 and ${maximum}.`);
+  }
+  return Math.round(value * 100) / 100;
+}
+
+function offsetCalendarDate(date: string, days: number) {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function validCalendarDate(date: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const value = new Date(`${date}T00:00:00Z`);
+  return !Number.isNaN(value.getTime()) && value.toISOString().slice(0, 10) === date;
+}
+
+export async function prepareEstimatedMeal(
+  supabase: SupabaseClient,
+  userId: string,
+  conversationId: string,
+  input: EstimatedMealDraftInput,
+) {
+  if (!["breakfast", "lunch", "dinner", "snack"].includes(input.meal_type)) {
+    throw new Error("Choose breakfast, lunch, dinner, or snack.");
+  }
+  if (!Number.isInteger(input.days_ago) || input.days_ago < 0 || input.days_ago > 3650) {
+    throw new Error("Days ago must be a whole number between 0 and 3650.");
+  }
+  if (input.meal_date && input.days_ago !== 0) {
+    throw new Error("Use either an exact meal date or days ago, not both.");
+  }
+
+  const { data: preferences, error: preferenceError } = await supabase
+    .from("user_training_preferences")
+    .select("timezone")
+    .eq("user_id", userId)
+    .maybeSingle();
+  assertResult(preferenceError, "load timezone");
+  const today = dateInTimeZone(
+    preferences?.timezone ?? "America/Indiana/Indianapolis",
+  );
+  const mealDate = input.meal_date ?? offsetCalendarDate(today, -input.days_ago);
+  if (!validCalendarDate(mealDate)) throw new Error("Meal date must use a valid YYYY-MM-DD date.");
+  if (mealDate > today) throw new Error("Meal logs cannot be dated in the future.");
+
+  const foodName = input.food_name.trim().slice(0, 160);
+  const description = input.description.trim().slice(0, 1000);
+  const servingSize = input.serving_size.trim().slice(0, 160);
+  if (!foodName || !description || !servingSize) {
+    throw new Error("Food name, description, and serving size are required.");
+  }
+
+  const payload = {
+    food_name: foodName,
+    description,
+    serving_size: servingSize,
+    meal_type: input.meal_type,
+    meal_date: mealDate,
+    calories: estimatedNutritionNumber(input.calories, "Calories", 10000),
+    protein_g: estimatedNutritionNumber(input.protein_g, "Protein", 2000),
+    carbs_g: estimatedNutritionNumber(input.carbs_g, "Carbohydrates", 2000),
+    fat_g: estimatedNutritionNumber(input.fat_g, "Fat", 2000),
+    saturated_fat_g: estimatedNutritionNumber(input.saturated_fat_g, "Saturated fat", 1000),
+    fiber_g: estimatedNutritionNumber(input.fiber_g, "Fiber", 1000),
+    soluble_fiber_g: estimatedNutritionNumber(input.soluble_fiber_g, "Soluble fiber", 1000),
+    sugar_g: estimatedNutritionNumber(input.sugar_g, "Sugar", 2000),
+    sodium_mg: estimatedNutritionNumber(input.sodium_mg, "Sodium", 100000),
+    assumptions: input.assumptions
+      .map((assumption) => assumption.trim().slice(0, 300))
+      .filter(Boolean)
+      .slice(0, 8),
+  };
+  if (payload.calories == null || payload.protein_g == null
+    || payload.carbs_g == null || payload.fat_g == null) {
+    throw new Error("Calories, protein, carbohydrates, and fat are required.");
+  }
+
+  const { data, error } = await supabase
+    .from("assistant_meal_drafts")
+    .insert({ conversation_id: conversationId, user_id: userId, payload })
+    .select("id,payload")
+    .single();
+  assertResult(error, "prepare meal estimate");
+  if (!data) throw new Error("Unable to read the prepared meal estimate.");
+
+  return {
+    confirmation_required: true,
+    draft: { id: data.id, ...(data.payload as typeof payload) },
+  };
+}
+
+export async function confirmEstimatedMeal(
+  supabase: SupabaseClient,
+  userId: string,
+  draftId: string,
+) {
+  const { data, error } = await supabase.rpc("confirm_meal_draft", {
+    p_user_id: userId,
+    p_draft_id: draftId,
+  });
+  assertResult(error, "confirm meal estimate");
+  return { confirmation_required: false, ...(data as Record<string, unknown>) };
+}
+
 export async function getCurrentOrNextWorkout(
   supabase: SupabaseClient,
   userId: string,
