@@ -18,7 +18,7 @@ export type SavedMealRow = {
 };
 
 export async function fetchSavedMealsHome(): Promise<SavedMealRow[]> {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase
     .from("v_saved_meals_home")

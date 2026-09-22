@@ -1,4 +1,18 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+AI Overlord (Baseline) is a private Next.js application.
+
+## Sign-in
+
+All `/baseline` pages use one Supabase email sign-in at `/login`. The browser and
+server share a cookie-backed session through `@supabase/ssr`; server pages and
+server actions query Supabase as the signed-in user so database grants and RLS
+remain in effect. Magic links return to `/baseline/assistant`, where `proxy.ts`
+exchanges the PKCE code before rendering. Keep that URL in the Supabase Auth
+redirect allowlist. Existing browser-local sessions need one new sign-in after
+this change. The daily-digest integration continues to use its separate
+server-only token and secret-key path.
+
+Never use a Supabase secret or service-role key for browser pages or general
+dashboard rendering.
 
 ## Getting Started
 

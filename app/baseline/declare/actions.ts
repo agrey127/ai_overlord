@@ -16,7 +16,7 @@ export async function logSavedMeal(formData: FormData) {
   if (!savedMealId) throw new Error("Missing saved_meal_id");
   if (!Number.isFinite(multiplier) || multiplier <= 0) throw new Error("Invalid multiplier");
 
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase.rpc("log_saved_meal", {
     p_saved_meal_id: savedMealId,

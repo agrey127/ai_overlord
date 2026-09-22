@@ -1,4 +1,5 @@
 import { supabaseClient } from "@/lib/supabase/client";
+import { requireUserId } from "@/lib/supabase/server";
 
 type MealLogRow = {
   id: number;
@@ -30,7 +31,8 @@ function toNumber(value: number | null | undefined) {
 }
 
 export async function fetchTodayFoodLog() {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
+  const userId = await requireUserId();
   const indianapolisDateParts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Indiana/Indianapolis",
     year: "numeric",
@@ -51,6 +53,7 @@ export async function fetchTodayFoodLog() {
   const { data, error } = await supabase
     .from("meal_logs")
     .select("id, meal_date, meal_type, description, food_name, calories, protein_g, carbs_g, fat_g, logged_at")
+    .eq("user_id", userId)
     .eq("meal_date", today)
     .order("logged_at", { ascending: false })
     .returns<MealLogRow[]>();

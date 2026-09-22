@@ -1,6 +1,7 @@
 "use server";
 
 import { supabaseClient } from "@/lib/supabase/client";
+import { requireUserId } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -17,11 +18,11 @@ export async function proposeAiMeal(input: {
   meal_type?: string;
   meal_date?: string; // YYYY-MM-DD
 }) {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase.functions.invoke("ai_meal_propose", {
     body: {
-      user_id: "agrey127@gmail.com",
+      user_id: await requireUserId(),
       meal_type: asMealType(input.meal_type ?? "snack"),
       meal_date: input.meal_date ?? null,
       text: input.text ?? "",
@@ -48,7 +49,7 @@ export async function confirmAiMealLog(payload: {
   sugar_g?: number;
   sodium_mg?: number;
 }) {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   // Only totals get logged (your requirement)
   const { error: logErr } = await supabase.rpc("log_manual_meal", {
@@ -80,7 +81,7 @@ export async function saveAiMealTemplate(payload: {
   sugar_g?: number;
   sodium_mg?: number;
 }) {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   const nameToUse = (payload.name ?? "").trim() || "Saved meal";
 

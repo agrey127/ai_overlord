@@ -1,4 +1,5 @@
 import { supabaseClient } from "@/lib/supabase/client";
+import { requireUserId } from "@/lib/supabase/server";
 
 export type RelationshipStatusRow = {
   user_id: string;
@@ -16,8 +17,9 @@ export type RelationshipStatusRow = {
   status: "overdue" | "unplanned" | "planned" | "completed" | string;
 };
 
-export async function fetchRelationshipStatus(userId = "agrey127@gmail.com") {
-  const supabase = supabaseClient();
+export async function fetchRelationshipStatus(userId?: string) {
+  userId = userId ?? await requireUserId();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase
     .from("v_relationship_status")

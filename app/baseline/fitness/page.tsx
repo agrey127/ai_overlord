@@ -16,7 +16,7 @@ import {
   fetchStrengthWeeklySummary,
 } from "@/lib/data/fitness";
 
-const USER_ID = "agrey127@gmail.com";
+import { requireUserId } from "@/lib/supabase/server";
 
 function n(x: number | null | undefined) {
   return typeof x === "number" && Number.isFinite(x) ? x : 0;
@@ -101,6 +101,7 @@ function trendMeta(current: number | null | undefined, baseline: number | null |
 }
 
 export default async function FitnessPage() {
+  const USER_ID = await requireUserId();
   const [gate, consistency, longrun, balance, race, steps, strength] = await Promise.all([
     fetchReadinessStatus(USER_ID),
     fetchRunConsistency(USER_ID),

@@ -1,4 +1,5 @@
 import { supabaseClient } from "@/lib/supabase/client";
+import { requireUserId } from "@/lib/supabase/server";
 import type { TodayNutritionHomeRow, CashflowProjection7dRow, WeightTrends7dRow } from "@/lib/contracts/dashboard";
 
 export type LifeSignal = {
@@ -51,8 +52,9 @@ function toFiniteNumber(value: number | string | null | undefined) {
 }
 
 
-export async function fetchActiveLifeSignals(userId = "agrey127@gmail.com") {
-  const supabase = supabaseClient();
+export async function fetchActiveLifeSignals(userId?: string) {
+  userId = userId ?? await requireUserId();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase
     .from("life_signals")
@@ -76,11 +78,13 @@ export async function fetchActiveLifeSignals(userId = "agrey127@gmail.com") {
 
 
 export async function fetchTodayNutritionHome() {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
+  const userId = await requireUserId();
 
   const { data, error } = await supabase
     .from("v_today_nutrition_home")
     .select("*")
+    .eq("user_id", userId)
     .limit(1)
     .maybeSingle<TodayNutritionHomeRow>();
 
@@ -89,7 +93,7 @@ export async function fetchTodayNutritionHome() {
 }
 
 export async function fetchCashflowProjection7d() {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase
     .from("v_cashflow_projection_7d")
@@ -101,8 +105,9 @@ export async function fetchCashflowProjection7d() {
   return data;
 }
 
-export async function fetchWeightTrends7d(userId = "agrey127@gmail.com") {
-  const supabase = supabaseClient();
+export async function fetchWeightTrends7d(userId?: string) {
+  userId = userId ?? await requireUserId();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase
     .from("v_weight_trends_7d")
@@ -156,8 +161,8 @@ export async function fetchWeightTrends7d(userId = "agrey127@gmail.com") {
 
 
 export async function fetchMicroTrendsHome(userId?: string) {
-  const supabase = supabaseClient();
-  const uid = userId ?? "agrey127@gmail.com";
+  const supabase = await supabaseClient();
+  const uid = userId ?? await requireUserId();
 
   const { data, error } = await supabase
     .from("v_micro_trends_home")

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { ManualFitnessForm } from "./ManualFitnessForm";
+import { requireUserId } from "@/lib/supabase/server";
 
-export default function ManualFitnessPage() {
+export default async function ManualFitnessPage() {
+  const userId = await requireUserId();
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: "20px 16px 90px" }}>
       <header style={{ marginBottom: 18 }}>
@@ -48,7 +50,7 @@ export default function ManualFitnessPage() {
               User ID
             </div>
             <div className="card-muted" style={{ marginTop: 4, fontSize: 13 }}>
-              agrey127@gmail.com
+              {userId}
             </div>
 
             <div style={{ marginTop: 14, fontSize: 14, fontWeight: 700 }}>

@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { fetchStepsLast14Days } from "@/lib/data/fitness";
+import { requireUserId } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
-const USER_ID = "agrey127@gmail.com";
 
 function indianapolisDay() {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -52,6 +52,7 @@ function fmtShortDate(day: string) {
 }
 
 export default async function StepsPage() {
+  const USER_ID = await requireUserId();
   const endDay = indianapolisDay();
   const days = lastDays(endDay, 14);
   const startDay = days[days.length - 1];

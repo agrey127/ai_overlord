@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import type { AssistantBootstrap, AssistantChatResponse, AssistantConversation, AssistantConversationCreateResponse, AssistantMessage, AssistantThreadDomain, SavedMeal, StrengthWorkout } from "@/lib/assistant/types";
 import { assistantRequestsConfirmation, CONFIRMATION_REPLY } from "@/lib/assistant/confirmation";
@@ -138,18 +139,16 @@ async function authHeaders() {
 }
 
 export default function AssistantWorkspace() {
+  const router = useRouter();
   const [workout, setWorkout] = useState(demoWorkout);
   const [savedMeals, setSavedMeals] = useState(demoSavedMeals);
   const [conversations, setConversations] = useState(demoConversations);
   const [messages, setMessages] = useState(demoMessages);
   const [selectedId, setSelectedId] = useState<string | null>("demo-training");
   const [draft, setDraft] = useState("");
-  const [email, setEmail] = useState("");
   const [signedIn, setSignedIn] = useState(false);
-  const [authOpen, setAuthOpen] = useState(false);
   const [newThreadOpen, setNewThreadOpen] = useState(false);
   const [creatingThread, setCreatingThread] = useState(false);
-  const [authNotice, setAuthNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
@@ -208,7 +207,7 @@ export default function AssistantWorkspace() {
 
   async function sendMessage(text: string, attachedImages: PendingImage[] = []) {
     const clean = text.trim(); if ((!clean && !attachedImages.length) || loading) return;
-    if (!signedIn) { setAuthOpen(true); return; }
+    if (!signedIn) { router.push("/login"); return; }
     const displayText = clean || "Import this Garmin activity from the attached screenshot.";
     const optimisticContent = attachedImages.length
       ? `${displayText}\n${attachedImages.length} Garmin screenshot${attachedImages.length === 1 ? "" : "s"} attached`
@@ -261,11 +260,6 @@ export default function AssistantWorkspace() {
     }));
   }
 
-  async function submitMagicLink(event: FormEvent) {
-    event.preventDefault(); setAuthNotice("");
-    const { error: signInError } = await getBrowserSupabase().auth.signInWithOtp({ email, options: { emailRedirectTo: `${window.location.origin}/baseline/assistant` } });
-    setAuthNotice(signInError ? signInError.message : "Check your email for a secure sign-in link.");
-  }
   function newConversation() {
     setNewThreadOpen(true);
   }
@@ -288,7 +282,7 @@ export default function AssistantWorkspace() {
   }
 
   async function createThread(domain: AssistantThreadDomain) {
-    if (!signedIn) { setNewThreadOpen(false); setAuthOpen(true); return; }
+    if (!signedIn) { setNewThreadOpen(false); router.push("/login"); return; }
     if (creatingThread) return;
     setCreatingThread(true); setError("");
     try {
@@ -323,7 +317,7 @@ export default function AssistantWorkspace() {
       </aside>
       <section className={styles.chatPanel} aria-label="Assistant conversation">
         <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>{isNutritionChat ? "Saved meals" : "Next workout"}</small>{isNutritionChat ? `${savedMeals.length} meal${savedMeals.length === 1 ? "" : "s"}` : workout.name}</span><Icon name="chevron" /></button>
-        {contextOpen && (isNutritionChat ? <NutritionMealsCard meals={savedMeals} signedIn={signedIn} onRequireAuth={() => setAuthOpen(true)} mobile /> : <WorkoutCard workout={workout} mobile />)}
+        {contextOpen && (isNutritionChat ? <NutritionMealsCard meals={savedMeals} signedIn={signedIn} onRequireAuth={() => router.push("/login")} mobile /> : <WorkoutCard workout={workout} mobile />)}
         <div className={styles.messages} aria-live="polite">
           {messages.map((message) => message.role !== "tool" && <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>{message.role === "assistant" && <span className={styles.avatar}><Icon name="spark" /></span>}<div><span className={styles.speaker}>{message.role === "user" ? "You" : "Baseline"}</span><p>{message.content}</p></div></article>)}
           {loading && <article className={styles.assistantMessage}><span className={styles.avatar}><Icon name="spark" /></span><div><span className={styles.speaker}>Baseline</span><p className={styles.thinking}>Working through that…</p></div></article>}<div ref={endRef} />
@@ -346,10 +340,9 @@ export default function AssistantWorkspace() {
         </div>
         <p className={styles.disclaimer}>Baseline can make mistakes. Check important details.</p>
       </section>
-      <aside className={styles.contextRail}>{isNutritionChat ? <NutritionMealsCard meals={savedMeals} signedIn={signedIn} onRequireAuth={() => setAuthOpen(true)} /> : <WorkoutCard workout={workout} />}</aside>
+      <aside className={styles.contextRail}>{isNutritionChat ? <NutritionMealsCard meals={savedMeals} signedIn={signedIn} onRequireAuth={() => router.push("/login")} /> : <WorkoutCard workout={workout} />}</aside>
     </section>
     {newThreadOpen && <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget && !creatingThread) setNewThreadOpen(false); }}><section className={styles.threadModal} role="dialog" aria-modal="true" aria-labelledby="thread-title"><button className={styles.closeButton} disabled={creatingThread} onClick={() => setNewThreadOpen(false)} aria-label="Close">×</button><span className={styles.authMark}><Icon name="spark" /></span><h2 id="thread-title">Choose a chat</h2><p>Each subject keeps one continuous conversation.</p><div className={styles.threadChoices}>{threadChoices.map((choice) => <button key={choice.domain} type="button" disabled={creatingThread} onClick={() => selectDomain(choice.domain)}><strong>{choice.label}</strong><span>{choice.description}</span></button>)}</div></section></div>}
-    {authOpen && <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget) setAuthOpen(false); }}><section className={styles.authModal} role="dialog" aria-modal="true" aria-labelledby="auth-title"><button className={styles.closeButton} onClick={() => setAuthOpen(false)} aria-label="Close">×</button><span className={styles.authMark}><Icon name="spark" /></span><h2 id="auth-title">Keep your Baseline</h2><p>Sign in with a private email link to save conversations, workouts, sets, and progress.</p><form onSubmit={submitMagicLink}><label htmlFor="email">Email</label><input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /><button>Send secure link</button></form>{authNotice && <p className={styles.authNotice}>{authNotice}</p>}</section></div>}
   </main>;
 }
 

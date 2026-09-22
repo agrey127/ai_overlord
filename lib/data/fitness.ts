@@ -33,7 +33,7 @@ export type ReadinessStatusRow = {
 };
 
 export async function fetchReadinessStatus(userId: string) {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase
     .from("v_readiness_status")
@@ -57,7 +57,7 @@ export type RunConsistencyRow = {
 };
 
 export async function fetchRunConsistency(userId: string) {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase
     .from("v_run_consistency")
@@ -88,7 +88,7 @@ export type LongRunProgressionRow = {
 };
 
 export async function fetchLongRunProgression(userId: string) {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase
     .from("v_long_run_progression")
@@ -121,7 +121,7 @@ export type LoadRecoveryBalanceRow = {
 };
 
 export async function fetchLoadRecoveryBalance(userId: string) {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase
     .from("v_load_recovery_balance")
@@ -179,7 +179,7 @@ export type StepsDailyRow = {
 };
 
 export async function fetchStepsSummary(userId: string) {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase
     .from("v_steps_summary")
@@ -192,7 +192,7 @@ export async function fetchStepsSummary(userId: string) {
 }
 
 export async function fetchStepsLast14Days(userId: string, endDay: string, startDay: string) {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase
     .from("fitness_daily")
@@ -207,7 +207,7 @@ export async function fetchStepsLast14Days(userId: string, endDay: string, start
 }
 
 export async function fetchRaceReadiness(userId: string) {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   const { data, error } = await supabase
     .from("v_race_readiness")
@@ -256,7 +256,7 @@ function mondayOfWeek(day: string) {
 }
 
 export async function fetchStrengthWeeklySummary(userId: string): Promise<StrengthWeeklySummary> {
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
   const today = localDay(new Date());
   const rollingStart = shiftDay(today, -6);
   const averageStart = shiftDay(today, -55);

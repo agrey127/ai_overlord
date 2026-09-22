@@ -1,9 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { supabaseClient } from "@/lib/supabase/client";
+import { requireUserId } from "@/lib/supabase/server";
 
 type Signal = {
   id: string;
@@ -20,6 +16,8 @@ type Signal = {
 };
 
 async function getSignals(activeOnly: boolean): Promise<Signal[]> {
+  const supabase = await supabaseClient();
+  const userId = await requireUserId();
   const view = activeOnly
     ? "v_life_signals_active"
     : "v_life_signals_all";
@@ -27,7 +25,7 @@ async function getSignals(activeOnly: boolean): Promise<Signal[]> {
   const { data, error } = await supabase
     .from(view)
     .select("*")
-    .eq("user_id", "agrey127@gmail.com")
+    .eq("user_id", userId)
     .order("severity", { ascending: false });
 
   if (error) {

@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { supabaseClient } from "@/lib/supabase/client";
-
-const USER_ID = "agrey127@gmail.com";
+import { requireUserId } from "@/lib/supabase/server";
 
 function requireDay(formData: FormData) {
   const day = String(formData.get("day") ?? "").trim();
@@ -26,22 +25,19 @@ function requireInt(formData: FormData, key: string, label: string) {
 }
 
 export async function submitManualFitness(formData: FormData) {
-  const userId = String(formData.get("user_id") ?? "").trim();
-  if (userId !== USER_ID) {
-    throw new Error("Unexpected user_id");
-  }
+  const userId = await requireUserId();
 
   const day = requireDay(formData);
   const steps = requireInt(formData, "steps", "Steps");
   const restingHeartRate = requireInt(formData, "resting_heart_rate", "Resting heart rate");
   const sleepScore = requireInt(formData, "sleep_score", "Sleep score");
 
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
   const now = new Date().toISOString();
 
   const { error } = await supabase.from("fitness_daily").upsert(
     {
-      user_id: USER_ID,
+      user_id: userId,
       day,
       steps,
       resting_heart_rate: restingHeartRate,

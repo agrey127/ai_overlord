@@ -38,7 +38,7 @@ export async function updateFoodLogItem(formData: FormData) {
   const carbsG = parseOptionalNumber(formData, "carbs_g");
   const fatG = parseOptionalNumber(formData, "fat_g");
 
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
   const { error } = await supabase
     .from("meal_logs")
     .update({
@@ -66,7 +66,7 @@ export async function deleteFoodLogItem(formData: FormData) {
     throw new Error("Invalid item id");
   }
 
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
   const { error } = await supabase.from("meal_logs").delete().eq("id", id);
 
   if (error) throw new Error(`meal_logs delete: ${error.message}`);

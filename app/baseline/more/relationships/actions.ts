@@ -2,8 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { supabaseClient } from "@/lib/supabase/client";
-
-const USER_ID = "agrey127@gmail.com";
+import { requireUserId } from "@/lib/supabase/server";
 
 function requireField(formData: FormData, key: string) {
   const v = formData.get(key);
@@ -14,6 +13,7 @@ function requireField(formData: FormData, key: string) {
 }
 
 export async function planRelationship(formData: FormData) {
+  const USER_ID = await requireUserId();
   const commitment_id = requireField(formData, "commitment_id");
   const planned_for_local = requireField(formData, "planned_for"); // datetime-local
   const notes = (formData.get("notes") as string | null)?.trim() || null;
@@ -22,7 +22,7 @@ export async function planRelationship(formData: FormData) {
   // For now: just append ":00" and let Postgres parse it as timestamptz if your DB expects it.
   const planned_for = planned_for_local.length === 16 ? `${planned_for_local}:00` : planned_for_local;
 
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   // Close any existing active plan for this commitment
   await supabase
@@ -47,13 +47,14 @@ export async function planRelationship(formData: FormData) {
 }
 
 export async function logRelationship(formData: FormData) {
+  const USER_ID = await requireUserId();
   const commitment_id = requireField(formData, "commitment_id");
   const occurred_at_local = requireField(formData, "occurred_at"); // datetime-local
   const notes = (formData.get("notes") as string | null)?.trim() || null;
 
   const occurred_at = occurred_at_local.length === 16 ? `${occurred_at_local}:00` : occurred_at_local;
 
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   // Insert event (adjust column names if your table differs)
   const { error } = await supabase.from("relationship_events").insert({

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SignOutButton from "@/components/SignOutButton";
 
 type Module = {
   title: string;
@@ -47,6 +48,7 @@ export default function MorePage() {
         <p className="card-muted" style={{ marginTop: 6 }}>
           Modules that extend the system.
         </p>
+        <SignOutButton />
       </header>
 
       {/* Modules grid (mobile 2-up, desktop 3-up via .more-grid in globals.css) */}

@@ -141,7 +141,6 @@ export function ManualFitnessForm() {
         </div>
       </div>
 
-      <input type="hidden" name="user_id" value="agrey127@gmail.com" />
 
       <div className="card" style={{ borderColor: "rgba(255,255,255,0.10)" }}>
         <div className="card-inner">

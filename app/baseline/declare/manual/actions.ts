@@ -48,7 +48,7 @@ export async function submitManualLog(formData: FormData) {
 
   if (!description) throw new Error("Description is required");
 
-  const supabase = supabaseClient();
+  const supabase = await supabaseClient();
 
   // 1) Log it
   const { error: logErr } = await supabase.rpc("log_manual_meal", {
