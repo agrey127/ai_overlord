@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { logSavedMeal } from "@/lib/assistant/repository";
+import { getConversation, logSavedMeal } from "@/lib/assistant/repository";
 import { authenticateRequest } from "@/lib/supabase/authenticated";
 
 export const runtime = "nodejs";
@@ -11,14 +11,23 @@ export async function POST(request: Request) {
   try {
     const { supabase, userId } = await authenticateRequest(request);
     const body = (await request.json()) as {
+      conversationId?: unknown;
       savedMealId?: unknown;
       mealType?: unknown;
       servings?: unknown;
     };
     const savedMealId = String(body.savedMealId ?? "").trim();
+    const conversationId = String(body.conversationId ?? "").trim();
     const mealType = String(body.mealType ?? "").trim().toLowerCase();
     const servings = Number(body.servings);
 
+    if (!conversationId) {
+      return NextResponse.json({ error: "Open the Nutrition chat before logging a meal." }, { status: 400 });
+    }
+    const conversation = await getConversation(supabase, userId, conversationId);
+    if (conversation.domain !== "nutrition") {
+      return NextResponse.json({ error: "Meals can only be logged from the Nutrition chat." }, { status: 400 });
+    }
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(savedMealId)) {
       return NextResponse.json({ error: "Choose a valid saved meal." }, { status: 400 });
     }

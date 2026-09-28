@@ -5,7 +5,8 @@ export type AssistantDomain =
   | "nutrition"
   | "finance"
   | "relationships"
-  | "planning";
+  | "planning"
+  | "chief_of_staff";
 
 export type AssistantConversation = {
   id: string;
@@ -109,7 +110,7 @@ export type AssistantChatResponse = {
   workout: StrengthWorkout;
 };
 
-export type AssistantThreadDomain = Extract<AssistantDomain, "strength" | "running" | "nutrition">;
+export type AssistantThreadDomain = Extract<AssistantDomain, "general" | "strength" | "running" | "nutrition" | "chief_of_staff">;
 
 export type AssistantConversationCreateResponse = {
   conversation: AssistantConversation;

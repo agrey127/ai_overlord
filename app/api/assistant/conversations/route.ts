@@ -12,6 +12,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const threadCopy: Record<AssistantThreadDomain, { title: string; welcome: string }> = {
+  chief_of_staff: {
+    title: "New Chief of Staff chat",
+    welcome: "I can help you set priorities across strength, running, and nutrition. Ask for a current brief or tell me what decision is on your mind.",
+  },
+  general: {
+    title: "New general chat",
+    welcome: "Ask me about your logged activity, nutrition, workouts, or anything else in Baseline.",
+  },
   strength: {
     title: "New strength chat",
     welcome: "New strength thread. What are we working on?",
@@ -34,7 +42,7 @@ export async function POST(request: Request) {
     const copy = threadCopy[domain];
 
     if (!copy) {
-      return NextResponse.json({ error: "Choose strength, running, or nutrition." }, { status: 400 });
+      return NextResponse.json({ error: "Choose Chief of Staff, General, Strength, Running, or Nutrition." }, { status: 400 });
     }
 
     const existingConversation = await getLatestConversationByDomain(supabase, userId, domain);
