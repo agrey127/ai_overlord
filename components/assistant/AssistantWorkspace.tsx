@@ -17,6 +17,8 @@ const demoWorkout: StrengthWorkout = {
   })),
 };
 const demoConversations: AssistantConversation[] = [
+  { id: "demo-chief", title: "Chief of Staff", domain: "chief_of_staff", updated_at: new Date().toISOString() },
+  { id: "demo-general", title: "General", domain: "general", updated_at: new Date().toISOString() },
   { id: "demo-training", title: "Next workout", domain: "strength", updated_at: new Date().toISOString() },
   { id: "demo-review", title: "Weekly review", domain: "planning", updated_at: new Date().toISOString() },
   { id: "demo-meals", title: "Meal planning", domain: "nutrition", updated_at: new Date().toISOString() },
@@ -27,6 +29,12 @@ const demoMessages: AssistantMessage[] = [
   { id: "answer", role: "assistant", content: "Lower strength. Four movements, about 52 minutes. We’ll start with back squat.", created_at: new Date().toISOString() },
 ];
 const demoMessagesByConversation: Record<string, AssistantMessage[]> = {
+  "demo-chief": [
+    { id: "chief-hello", role: "assistant", content: "I can help prioritize across strength, running, and nutrition. Ask for a current brief or describe the decision you need to make.", created_at: new Date().toISOString() },
+  ],
+  "demo-general": [
+    { id: "general-hello", role: "assistant", content: "Ask me about your running, meals, or workouts. For example: How many miles did I run this week?", created_at: new Date().toISOString() },
+  ],
   "demo-training": demoMessages,
   "demo-review": [
     { id: "review-hello", role: "assistant", content: "Let’s review the week and decide what matters next.", created_at: new Date().toISOString() },
@@ -43,6 +51,8 @@ const demoSavedMeals: SavedMeal[] = [
 ];
 
 const threadChoices: Array<{ domain: AssistantThreadDomain; label: string; description: string }> = [
+  { domain: "chief_of_staff", label: "Chief of Staff", description: "Priorities and decisions across your specialist chats" },
+  { domain: "general", label: "General", description: "Questions across your Baseline data" },
   { domain: "strength", label: "Strength", description: "Workouts, sets, weights, and progress" },
   { domain: "running", label: "Running", description: "Runs, activity imports, and endurance" },
   { domain: "nutrition", label: "Nutrition", description: "Meals, habits, and fueling" },
@@ -150,6 +160,7 @@ export default function AssistantWorkspace() {
   const [newThreadOpen, setNewThreadOpen] = useState(false);
   const [creatingThread, setCreatingThread] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [savingMealMessageId, setSavingMealMessageId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -161,7 +172,7 @@ export default function AssistantWorkspace() {
     const indexed = new Map<AssistantThreadDomain, AssistantConversation>();
     for (const conversation of conversations) {
       if (
-        (conversation.domain === "strength" || conversation.domain === "nutrition" || conversation.domain === "running")
+        (conversation.domain === "general" || conversation.domain === "strength" || conversation.domain === "nutrition" || conversation.domain === "running" || conversation.domain === "chief_of_staff")
         && !indexed.has(conversation.domain)
       ) {
         indexed.set(conversation.domain, conversation);
@@ -170,13 +181,21 @@ export default function AssistantWorkspace() {
     return indexed;
   }, [conversations]);
   const selectedConversation = conversations.find((conversation) => conversation.id === selectedId);
+  const isGeneralChat = selectedConversation?.domain === "general";
+  const isChiefOfStaffChat = selectedConversation?.domain === "chief_of_staff";
   const isStrengthChat = selectedConversation?.domain === "strength";
+  const isRunningChat = selectedConversation?.domain === "running";
   const isNutritionChat = selectedConversation?.domain === "nutrition";
   const latestMessage = messages.at(-1);
   const confirmationRequired = latestMessage?.role === "assistant" && assistantRequestsConfirmation(
     latestMessage.content,
     latestMessage.metadata?.confirmation_required === true,
   );
+  const saveableMealMessage = latestMessage?.role === "assistant"
+    && Number.isSafeInteger(Number(latestMessage.metadata?.save_to_meals_log_id))
+    ? latestMessage
+    : null;
+  const mealSavedToList = saveableMealMessage?.metadata?.saved_to_meals === true;
 
   async function loadContext(conversationId?: string | null) {
     const headers = await authHeaders();
@@ -201,6 +220,14 @@ export default function AssistantWorkspace() {
   }, []);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
   useEffect(() => { pendingImagesRef.current = pendingImages; }, [pendingImages]);
+  useEffect(() => {
+    if (isRunningChat) return;
+    setPendingImages((current) => {
+      current.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
+      return current.length ? [] : current;
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [isRunningChat]);
   useEffect(() => () => {
     pendingImagesRef.current.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
   }, []);
@@ -208,6 +235,8 @@ export default function AssistantWorkspace() {
   async function sendMessage(text: string, attachedImages: PendingImage[] = []) {
     const clean = text.trim(); if ((!clean && !attachedImages.length) || loading) return;
     if (!signedIn) { router.push("/login"); return; }
+    if (!selectedId) { setError("Choose a chat before sending a message."); return; }
+    if (attachedImages.length && !isRunningChat) { setError("Garmin run screenshots belong in the Running chat."); return; }
     const displayText = clean || "Import this Garmin activity from the attached screenshot.";
     const optimisticContent = attachedImages.length
       ? `${displayText}\n${attachedImages.length} Garmin screenshot${attachedImages.length === 1 ? "" : "s"} attached`
@@ -238,7 +267,57 @@ export default function AssistantWorkspace() {
     } finally { setLoading(false); }
   }
 
+  async function finishWorkout() {
+    if (loading) return;
+    if (!signedIn) { router.push("/login"); return; }
+    if (!selectedId) { setError("Open the strength chat before finishing a workout."); return; }
+    setLoading(true); setError("");
+    try {
+      const response = await fetch("/api/assistant/workouts/complete", {
+        method: "POST",
+        headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: selectedId }),
+      });
+      const data = await readAssistantResponse(response);
+      if (!response.ok) throw new Error(data.error ?? "The workout could not be completed.");
+      setMessages((current) => [...current, {
+        id: `finish-user-${Date.now()}`,
+        role: "user",
+        content: "Finish my current workout.",
+        created_at: new Date().toISOString(),
+      }, data.message]);
+      setWorkout(data.workout);
+      await loadContext(data.conversationId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The workout could not be completed.");
+      await loadContext(selectedId).catch(() => undefined);
+    } finally { setLoading(false); }
+  }
+
+  async function saveLoggedMeal(message: AssistantMessage) {
+    if (savingMealMessageId) return;
+    if (!signedIn) { router.push("/login"); return; }
+    setSavingMealMessageId(message.id); setError("");
+    try {
+      const response = await fetch("/api/assistant/meals/save", {
+        method: "POST",
+        headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId: message.id }),
+      });
+      const data = (await response.json()) as { meal?: SavedMeal; error?: string };
+      if (!response.ok || !data.meal) throw new Error(data.error ?? "Unable to save the meal.");
+      setSavedMeals((current) => [...current.filter((meal) => meal.id !== data.meal!.id), data.meal!]
+        .sort((a, b) => a.name.localeCompare(b.name)));
+      setMessages((current) => current.map((item) => item.id === message.id
+        ? { ...item, metadata: { ...item.metadata, saved_meal_id: data.meal!.id, saved_to_meals: true } }
+        : item));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to save the meal.");
+    } finally { setSavingMealMessageId(null); }
+  }
+
   function addImages(files: FileList | null) {
+    if (!isRunningChat) { setError("Garmin run screenshots belong in the Running chat."); return; }
     const incoming = Array.from(files ?? []);
     if (!incoming.length) return;
     const supported = incoming.filter((file) => ["image/jpeg", "image/png", "image/webp"].includes(file.type));
@@ -316,15 +395,16 @@ export default function AssistantWorkspace() {
         <p className={styles.privacy}>{signedIn ? "Synced privately to your account" : "Preview mode · sign in to save"}</p>
       </aside>
       <section className={styles.chatPanel} aria-label="Assistant conversation">
-        <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>{isNutritionChat ? "Saved meals" : "Next workout"}</small>{isNutritionChat ? `${savedMeals.length} meal${savedMeals.length === 1 ? "" : "s"}` : workout.name}</span><Icon name="chevron" /></button>
-        {contextOpen && (isNutritionChat ? <NutritionMealsCard meals={savedMeals} signedIn={signedIn} onRequireAuth={() => router.push("/login")} mobile /> : <WorkoutCard workout={workout} mobile />)}
+        {(isStrengthChat || isNutritionChat) && <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>{isNutritionChat ? "Saved meals" : "Next workout"}</small>{isNutritionChat ? `${savedMeals.length} meal${savedMeals.length === 1 ? "" : "s"}` : workout.name}</span><Icon name="chevron" /></button>}
+        {contextOpen && (isStrengthChat || isNutritionChat) && (isNutritionChat ? <NutritionMealsCard meals={savedMeals} conversationId={selectedId} signedIn={signedIn} onRequireAuth={() => router.push("/login")} mobile /> : <WorkoutCard workout={workout} mobile />)}
         <div className={styles.messages} aria-live="polite">
           {messages.map((message) => message.role !== "tool" && <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>{message.role === "assistant" && <span className={styles.avatar}><Icon name="spark" /></span>}<div><span className={styles.speaker}>{message.role === "user" ? "You" : "Baseline"}</span><p>{message.content}</p></div></article>)}
           {loading && <article className={styles.assistantMessage}><span className={styles.avatar}><Icon name="spark" /></span><div><span className={styles.speaker}>Baseline</span><p className={styles.thinking}>Working through that…</p></div></article>}<div ref={endRef} />
         </div>
-        {isStrengthChat || confirmationRequired ? <div className={styles.quickActions}>
+        {isStrengthChat || confirmationRequired || saveableMealMessage ? <div className={styles.quickActions}>
           {confirmationRequired ? <button disabled={loading} onClick={() => void sendMessage(CONFIRMATION_REPLY)}>Confirm</button> : null}
-          {isStrengthChat && workout.status !== "completed" ? <button disabled={loading} onClick={() => void sendMessage(workout.status === "in_progress" ? "Finish my current workout." : "Start my next workout.")}>{workout.status === "in_progress" ? "Finish workout" : "Start workout"}</button> : null}
+          {saveableMealMessage ? <button disabled={loading || Boolean(savingMealMessageId) || mealSavedToList} onClick={() => void saveLoggedMeal(saveableMealMessage)}>{mealSavedToList ? "Saved to Meals" : savingMealMessageId ? "Saving…" : "Save to Meals"}</button> : null}
+          {isStrengthChat && workout.status !== "completed" ? <button disabled={loading} onClick={() => void (workout.status === "in_progress" ? finishWorkout() : sendMessage("Start my next workout."))}>{workout.status === "in_progress" ? "Finish workout" : "Start workout"}</button> : null}
           {isStrengthChat ? <button disabled={loading} onClick={() => void sendMessage("Help me log my next set.")}>Log a set</button> : null}
           {isStrengthChat ? <button className={styles.reviewAction} disabled={loading} onClick={() => void sendMessage("Review my recent strength progress.")}>Review progress</button> : null}
         </div> : null}
@@ -332,15 +412,15 @@ export default function AssistantWorkspace() {
         <div className={styles.composerArea}>
           {pendingImages.length ? <div className={styles.attachmentTray} aria-label="Attached Garmin screenshots">{pendingImages.map((image) => <figure key={image.id} className={styles.attachment}><Image src={image.previewUrl} alt="Garmin screenshot preview" width={58} height={58} unoptimized /><button type="button" onClick={() => removeImage(image.id)} aria-label={`Remove ${image.file.name}`}>×</button></figure>)}</div> : null}
           <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); void sendMessage(draft, pendingImages); }}>
-            <input ref={fileInputRef} className={styles.fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { addImages(event.target.files); event.target.value = ""; }} />
-            <button className={styles.attachButton} type="button" disabled={loading} onClick={() => fileInputRef.current?.click()} aria-label="Attach Garmin screenshots"><Icon name="paperclip" /></button>
+            {isRunningChat ? <><input ref={fileInputRef} className={styles.fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { addImages(event.target.files); event.target.value = ""; }} />
+            <button className={styles.attachButton} type="button" disabled={loading} onClick={() => fileInputRef.current?.click()} aria-label="Attach Garmin screenshots"><Icon name="paperclip" /></button></> : null}
             <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask Baseline anything…" aria-label="Message Baseline" />
             <button disabled={(!draft.trim() && !pendingImages.length) || loading} aria-label="Send message"><Icon name="send" /></button>
           </form>
         </div>
         <p className={styles.disclaimer}>Baseline can make mistakes. Check important details.</p>
       </section>
-      <aside className={styles.contextRail}>{isNutritionChat ? <NutritionMealsCard meals={savedMeals} signedIn={signedIn} onRequireAuth={() => router.push("/login")} /> : <WorkoutCard workout={workout} />}</aside>
+      <aside className={styles.contextRail}>{isChiefOfStaffChat ? <section className={styles.generalCard}><span className={styles.workoutEyebrow}>Chief of Staff</span><h2>Set your priorities</h2><p>Coordinate strength, running, and nutrition using a current, dated brief.</p><ul><li>What needs my attention this week?</li><li>How should I balance training and fueling?</li><li>What should I focus on next?</li></ul></section> : isGeneralChat ? <section className={styles.generalCard}><span className={styles.workoutEyebrow}>General chat</span><h2>Ask across Baseline</h2><p>Try a question about your logged runs, meals, or current workout.</p><ul><li>How many miles did I run this week?</li><li>How many calories did I log yesterday?</li><li>What was my average logged protein over the last 7 days?</li></ul></section> : isRunningChat ? <section className={styles.generalCard}><span className={styles.workoutEyebrow}>Running chat</span><h2>Run history</h2><p>Ask about your recorded runs, plan endurance work, or attach a Garmin run screenshot to import it.</p></section> : isNutritionChat ? <NutritionMealsCard meals={savedMeals} conversationId={selectedId} signedIn={signedIn} onRequireAuth={() => router.push("/login")} /> : <WorkoutCard workout={workout} />}</aside>
     </section>
     {newThreadOpen && <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget && !creatingThread) setNewThreadOpen(false); }}><section className={styles.threadModal} role="dialog" aria-modal="true" aria-labelledby="thread-title"><button className={styles.closeButton} disabled={creatingThread} onClick={() => setNewThreadOpen(false)} aria-label="Close">×</button><span className={styles.authMark}><Icon name="spark" /></span><h2 id="thread-title">Choose a chat</h2><p>Each subject keeps one continuous conversation.</p><div className={styles.threadChoices}>{threadChoices.map((choice) => <button key={choice.domain} type="button" disabled={creatingThread} onClick={() => selectDomain(choice.domain)}><strong>{choice.label}</strong><span>{choice.description}</span></button>)}</div></section></div>}
   </main>;
@@ -357,11 +437,13 @@ function formatMacro(value: number | null) {
 
 function NutritionMealsCard({
   meals,
+  conversationId,
   signedIn,
   onRequireAuth,
   mobile = false,
 }: {
   meals: SavedMeal[];
+  conversationId: string | null;
   signedIn: boolean;
   onRequireAuth: () => void;
   mobile?: boolean;
@@ -386,6 +468,7 @@ function NutritionMealsCard({
       onRequireAuth();
       return;
     }
+    if (!conversationId) { setLogError("Open the Nutrition chat before logging a meal."); return; }
     setLogging(true);
     setNotice("");
     setLogError("");
@@ -393,7 +476,7 @@ function NutritionMealsCard({
       const response = await fetch("/api/assistant/meals", {
         method: "POST",
         headers: { ...(await authHeaders()), "Content-Type": "application/json" },
-        body: JSON.stringify({ savedMealId: meal.id, mealType, servings: Number(servings) }),
+        body: JSON.stringify({ conversationId, savedMealId: meal.id, mealType, servings: Number(servings) }),
       });
       const data = (await response.json()) as { logged?: { meal_name: string; meal_type: MealType; servings: number }; error?: string };
       if (!response.ok || !data.logged) throw new Error(data.error ?? "Unable to log this meal.");
