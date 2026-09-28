@@ -14,6 +14,23 @@ server-only token and secret-key path.
 Never use a Supabase secret or service-role key for browser pages or general
 dashboard rendering.
 
+## Database access
+
+Migration `20260928171202_protect_legacy_app_data.sql` enables RLS on the
+remaining legacy public tables, limits personal rows to the signed-in user's
+email (or Auth UUID when no email is present), and makes public views run with
+the caller's permissions. The singleton `dashboard_context` remains readable
+only by its active owner because the nutrition cards and meal RPCs use it.
+Import state and credential tables remain service-only. Anonymous clients
+cannot read the protected tables or views or run public RPCs.
+
+Verified on 2026-09-28 against the production Supabase project: all 68 public
+tables had RLS enabled; the signed-in role could read every view used by the
+current app, including the homepage summaries; anonymous role lacked access
+to the protected data; meal RPC write checks passed in a rolled-back
+transaction. Re-run these role-scoped checks after changing view dependencies
+or `dashboard_context` ownership.
+
 ## Getting Started
 
 First, run the development server:
