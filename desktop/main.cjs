@@ -42,6 +42,7 @@ function normalizeServerUrl(value) {
   if (url.protocol === "http:") {
     const host = url.hostname.toLowerCase();
     const privateHost = host === "localhost" || host === "127.0.0.1" || host.endsWith(".ts.net")
+      || host === "aioverlord.joshwrobinson.com" // This host resolves to the Tailscale Caddy address.
       || /^(?:10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/.test(host)
       || !host.includes(".");
     if (!privateHost) throw new Error("Use HTTPS for an address outside your private network.");

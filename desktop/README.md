@@ -15,7 +15,7 @@ The installer is written to `desktop/dist`. Run it on the Windows computer that 
 
 ## First run
 
-1. Enter the root address used to reach Baseline over Tailscale, such as `https://your-server.your-tailnet.ts.net`.
+1. Enter the root address used to reach Baseline over Tailscale. On this installation it is `http://aioverlord.joshwrobinson.com`, which resolves to the private Caddy Tailscale address.
 2. Sign in with the existing email flow. Copy the full sign-in link from the email, then choose **Sign in with copied link** from the Baseline tray menu. The link opens in the same desktop window that requested it so the PKCE verifier remains available.
 3. In Wispr Flow, confirm its hands-free toggle shortcut is **Ctrl+Win+Space**. Keep Wispr Flow running and allow Windows microphone access.
 4. Open the desired Baseline chat. Say **Hello Baseline**. After Baseline says “Ready,” dictate normally. Say **send it** to stop Wispr dictation, submit the text, and hear the reply. Say **cancel Baseline** while dictating to cancel.
