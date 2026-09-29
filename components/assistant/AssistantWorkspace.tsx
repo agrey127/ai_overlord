@@ -7,6 +7,8 @@ import { getBrowserSupabase } from "@/lib/supabase/browser";
 import type { AssistantBootstrap, AssistantChatResponse, AssistantConversation, AssistantConversationCreateResponse, AssistantMessage, AssistantThreadDomain, SavedMeal, StrengthWorkout } from "@/lib/assistant/types";
 import { assistantRequestsConfirmation, CONFIRMATION_REPLY } from "@/lib/assistant/confirmation";
 import RunningCoachCard, { type RunningCoachCardData } from "./RunningCoachCard";
+import DelegationBoard from "./DelegationBoard";
+import type { AssistantDelegation } from "@/lib/assistant/delegations";
 import styles from "./AssistantWorkspace.module.css";
 
 const demoWorkout: StrengthWorkout = {
@@ -32,7 +34,7 @@ const demoMessages: AssistantMessage[] = [
 ];
 const demoMessagesByConversation: Record<string, AssistantMessage[]> = {
   "demo-chief": [
-    { id: "chief-hello", role: "assistant", content: "I can help prioritize across strength, running, and nutrition. Ask for a current brief or describe the decision you need to make.", created_at: new Date().toISOString() },
+    { id: "chief-hello", role: "assistant", content: "I can prioritize across strength, running, and nutrition, and delegate focused reviews to each coach. Ask for a current brief or tell me what needs attention.", created_at: new Date().toISOString() },
   ],
   "demo-general": [
     { id: "general-hello", role: "assistant", content: "Ask me about your running, meals, or workouts. For example: How many miles did I run this week?", created_at: new Date().toISOString() },
@@ -56,7 +58,7 @@ const demoSavedMeals: SavedMeal[] = [
 ];
 
 const threadChoices: Array<{ domain: AssistantThreadDomain; label: string; description: string }> = [
-  { domain: "chief_of_staff", label: "Chief of Staff", description: "Priorities and decisions across your specialist chats" },
+  { domain: "chief_of_staff", label: "Chief of Staff", description: "Priorities, decisions, and specialist assignments" },
   { domain: "general", label: "General", description: "Questions across your Baseline data" },
   { domain: "strength", label: "Strength", description: "Workouts, sets, weights, and progress" },
   { domain: "running", label: "Running", description: "Goal setting, weekly plans, run reviews, and imports" },
@@ -158,6 +160,8 @@ export default function AssistantWorkspace() {
   const [workout, setWorkout] = useState(demoWorkout);
   const [savedMeals, setSavedMeals] = useState(demoSavedMeals);
   const [runningCoach, setRunningCoach] = useState<RunningCoachCardData | null>(null);
+  const [delegations, setDelegations] = useState<AssistantDelegation[]>([]);
+  const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const [conversations, setConversations] = useState(demoConversations);
   const [messages, setMessages] = useState(demoMessages);
   const [selectedId, setSelectedId] = useState<string | null>("demo-training");
@@ -213,6 +217,7 @@ export default function AssistantWorkspace() {
     const data = (await response.json()) as AssistantBootstrap & { error?: string };
     if (!response.ok) throw new Error(data.error ?? "Unable to load your assistant.");
     setWorkout(data.workout); setSavedMeals(data.savedMeals); setConversations(data.conversations);
+    setDelegations(data.delegations ?? []);
     setMessages(data.messages.filter((message) => message.role !== "tool")); setSelectedId(data.selectedConversationId);
     const selected = data.conversations.find((conversation) => conversation.id === data.selectedConversationId);
     if (selected?.domain === "running") {
@@ -285,6 +290,23 @@ export default function AssistantWorkspace() {
       setMessages((current) => current.filter((message) => message.id !== optimistic.id)); setError(e instanceof Error ? e.message : "Something went wrong.");
       if (fromVoice) window.baselineDesktop?.turnFailed();
     } finally { setLoading(false); }
+  }
+
+  async function retryDelegation(taskId: string) {
+    if (!selectedId || retryingTaskId) return;
+    setRetryingTaskId(taskId); setError("");
+    try {
+      const response = await fetch("/api/assistant/delegations", {
+        method: "POST",
+        headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: selectedId, taskId }),
+      });
+      const data = (await response.json()) as { task?: AssistantDelegation; error?: string };
+      if (!response.ok || !data.task) throw new Error(data.error ?? "Unable to retry the specialist task.");
+      setDelegations((current) => current.map((task) => task.id === data.task!.id ? data.task! : task));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to retry the specialist task.");
+    } finally { setRetryingTaskId(null); }
   }
 
   async function speakAssistantReply(message: AssistantMessage, conversationId: string) {
@@ -475,8 +497,8 @@ export default function AssistantWorkspace() {
         <p className={styles.privacy}>{signedIn ? "Synced privately to your account" : "Preview mode · sign in to save"}</p>
       </aside>
       <section className={styles.chatPanel} aria-label="Assistant conversation">
-        {(isStrengthChat || isNutritionChat || isRunningChat) && <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>{isNutritionChat ? "Saved meals" : isRunningChat ? "Running coach" : "Next workout"}</small>{isNutritionChat ? `${savedMeals.length} meal${savedMeals.length === 1 ? "" : "s"}` : isRunningChat ? (runningCoach?.profile?.goal_description ?? "Set your next goal") : workout.name}</span><Icon name="chevron" /></button>}
-        {contextOpen && (isStrengthChat || isNutritionChat || isRunningChat) && (isNutritionChat ? <NutritionMealsCard meals={savedMeals} conversationId={selectedId} signedIn={signedIn} onRequireAuth={() => router.push("/login")} mobile /> : isRunningChat ? <RunningCoachCard data={runningCoach} onAsk={(message) => { setContextOpen(false); void sendMessage(message); }} mobile /> : <WorkoutCard workout={workout} mobile />)}
+        {(isChiefOfStaffChat || isStrengthChat || isNutritionChat || isRunningChat) && <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>{isChiefOfStaffChat ? "Specialist tasks" : isNutritionChat ? "Saved meals" : isRunningChat ? "Running coach" : "Next workout"}</small>{isChiefOfStaffChat ? `${delegations.length} recent task${delegations.length === 1 ? "" : "s"}` : isNutritionChat ? `${savedMeals.length} meal${savedMeals.length === 1 ? "" : "s"}` : isRunningChat ? (runningCoach?.profile?.goal_description ?? "Set your next goal") : workout.name}</span><Icon name="chevron" /></button>}
+        {contextOpen && (isChiefOfStaffChat || isStrengthChat || isNutritionChat || isRunningChat) && (isChiefOfStaffChat ? <DelegationBoard tasks={delegations} onRetry={(id) => void retryDelegation(id)} retryingTaskId={retryingTaskId} mobile /> : isNutritionChat ? <NutritionMealsCard meals={savedMeals} conversationId={selectedId} signedIn={signedIn} onRequireAuth={() => router.push("/login")} mobile /> : isRunningChat ? <RunningCoachCard data={runningCoach} onAsk={(message) => { setContextOpen(false); void sendMessage(message); }} mobile /> : <WorkoutCard workout={workout} mobile />)}
         <div className={styles.messages} aria-live="polite">
           {messages.map((message) => message.role !== "tool" && <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>{message.role === "assistant" && <span className={styles.avatar}><Icon name="spark" /></span>}<div><span className={styles.speaker}>{message.role === "user" ? "You" : "Baseline"}</span><p>{message.content}</p></div></article>)}
           {loading && <article className={styles.assistantMessage}><span className={styles.avatar}><Icon name="spark" /></span><div><span className={styles.speaker}>Baseline</span><p className={styles.thinking}>Working through that…</p></div></article>}<div ref={endRef} />
@@ -502,7 +524,7 @@ export default function AssistantWorkspace() {
         </div>
         <p className={styles.disclaimer}>Baseline can make mistakes. Check important details.</p>
       </section>
-      <aside className={styles.contextRail}>{isChiefOfStaffChat ? <section className={styles.generalCard}><span className={styles.workoutEyebrow}>Chief of Staff</span><h2>Set your priorities</h2><p>Coordinate strength, running, and nutrition using a current, dated brief.</p><ul><li>What needs my attention this week?</li><li>How should I balance training and fueling?</li><li>What should I focus on next?</li></ul></section> : isGeneralChat ? <section className={styles.generalCard}><span className={styles.workoutEyebrow}>General chat</span><h2>Ask across Baseline</h2><p>Try a question about your logged runs, meals, or current workout.</p><ul><li>How many miles did I run this week?</li><li>How many calories did I log yesterday?</li><li>What was my average logged protein over the last 7 days?</li></ul></section> : isRunningChat ? <RunningCoachCard data={runningCoach} onAsk={(message) => void sendMessage(message)} /> : isNutritionChat ? <NutritionMealsCard meals={savedMeals} conversationId={selectedId} signedIn={signedIn} onRequireAuth={() => router.push("/login")} /> : <WorkoutCard workout={workout} />}</aside>
+      <aside className={styles.contextRail}>{isChiefOfStaffChat ? <DelegationBoard tasks={delegations} onRetry={(id) => void retryDelegation(id)} retryingTaskId={retryingTaskId} /> : isGeneralChat ? <section className={styles.generalCard}><span className={styles.workoutEyebrow}>General chat</span><h2>Ask across Baseline</h2><p>Try a question about your logged runs, meals, or current workout.</p><ul><li>How many miles did I run this week?</li><li>How many calories did I log yesterday?</li><li>What was my average logged protein over the last 7 days?</li></ul></section> : isRunningChat ? <RunningCoachCard data={runningCoach} onAsk={(message) => void sendMessage(message)} /> : isNutritionChat ? <NutritionMealsCard meals={savedMeals} conversationId={selectedId} signedIn={signedIn} onRequireAuth={() => router.push("/login")} /> : <WorkoutCard workout={workout} />}</aside>
     </section>
     {newThreadOpen && <div className={styles.modalBackdrop} onMouseDown={(event) => { if (event.target === event.currentTarget && !creatingThread) setNewThreadOpen(false); }}><section className={styles.threadModal} role="dialog" aria-modal="true" aria-labelledby="thread-title"><button className={styles.closeButton} disabled={creatingThread} onClick={() => setNewThreadOpen(false)} aria-label="Close">×</button><span className={styles.authMark}><Icon name="spark" /></span><h2 id="thread-title">Choose a chat</h2><p>Each subject keeps one continuous conversation.</p><div className={styles.threadChoices}>{threadChoices.map((choice) => <button key={choice.domain} type="button" disabled={creatingThread} onClick={() => selectDomain(choice.domain)}><strong>{choice.label}</strong><span>{choice.description}</span></button>)}</div></section></div>}
   </main>;

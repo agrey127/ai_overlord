@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/supabase/authenticated";
+import { listDelegations } from "@/lib/assistant/delegations";
 import {
   createConversation,
   getCurrentOrNextWorkout,
@@ -36,6 +37,9 @@ export async function GET(request: Request) {
     const messages = selectedConversationId
       ? await getMessages(supabase, userId, selectedConversationId)
       : [];
+    const selectedConversation = conversations.find((conversation) => conversation.id === selectedConversationId);
+    const delegations = selectedConversation?.domain === "chief_of_staff" && selectedConversationId
+      ? await listDelegations(supabase, userId, selectedConversationId) : [];
 
     return NextResponse.json({
       user: { id: user.id, email: user.email ?? null },
@@ -44,6 +48,7 @@ export async function GET(request: Request) {
       selectedConversationId,
       workout,
       savedMeals,
+      delegations,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load the assistant.";

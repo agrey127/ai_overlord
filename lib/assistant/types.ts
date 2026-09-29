@@ -102,6 +102,7 @@ export type AssistantBootstrap = {
   selectedConversationId: string | null;
   workout: StrengthWorkout;
   savedMeals: SavedMeal[];
+  delegations: import("@/lib/assistant/delegations").AssistantDelegation[];
 };
 
 export type AssistantChatResponse = {

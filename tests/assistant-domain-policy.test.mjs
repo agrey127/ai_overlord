@@ -34,6 +34,7 @@ const tools = loadTypeScript(join("lib", "assistant", "tools.ts"), {
   "@/lib/assistant/coaching-goals": {},
   "@/lib/assistant/strength-coach": {},
   "@/lib/assistant/nutrition-coach": {},
+  "@/lib/assistant/delegations": {},
 });
 const promptModules = Object.fromEntries(
   ["core", "general", "nutrition", "running", "strength", "chief-of-staff"].map((name) => [
@@ -57,7 +58,8 @@ test("the model receives only the selected chat's tools and scoped schemas", () 
   assert.deepEqual(nutrition.tools.map((tool) => tool.name).sort(), [...domainToolNames.nutrition].sort());
   assert.deepEqual(strength.tools.map((tool) => tool.name).sort(), [...domainToolNames.strength].sort());
   assert.deepEqual(general.tools.map((tool) => tool.name).sort(), [...domainToolNames.general].sort());
-  assert.deepEqual(chief.tools.map((tool) => tool.name).sort(), ["get_chief_of_staff_brief", "get_shared_coaching_goals"].sort());
+  assert.deepEqual(chief.tools.map((tool) => tool.name).sort(),
+    ["get_chief_of_staff_brief", "get_shared_coaching_goals", "get_delegated_tasks", "delegate_specialist_task"].sort());
   assert.deepEqual(running.tools.find((tool) => tool.name === "query_personal_totals").parameters.properties.dataset.enum, ["runs"]);
   assert.deepEqual(nutrition.tools.find((tool) => tool.name === "query_personal_totals").parameters.properties.dataset.enum, ["meal_logs"]);
   assert.deepEqual(running.tools.find((tool) => tool.name === "prepare_activity_import").parameters.properties.activity_type.enum, ["run"]);
@@ -82,6 +84,7 @@ test("specialist tool catalogs are distinct", () => {
   assert.ok(!domainToolNames.strength.includes("log_saved_meal"));
   assert.ok(!domainToolNames.general.includes("complete_workout"));
   assert.ok(!domainToolNames.chief_of_staff.includes("log_set"));
+  assert.ok(domainToolNames.chief_of_staff.includes("delegate_specialist_task"));
 });
 
 test("cross-domain writes are rejected before dispatch", () => {
@@ -96,6 +99,8 @@ test("cross-domain writes are rejected before dispatch", () => {
   assert.throws(() => assertDomainToolCall("running", "prepare_strength_coach_profile", {}), /not available/);
   assert.throws(() => assertDomainToolCall("nutrition", "confirm_strength_coach_profile", {}), /not available/);
   assert.throws(() => assertDomainToolCall("running", "confirm_nutrition_coach_profile", {}), /not available/);
+  assert.throws(() => assertDomainToolCall("running", "delegate_specialist_task", {}), /not available/);
+  assert.throws(() => assertDomainToolCall("strength", "get_delegated_tasks", {}), /not available/);
 });
 
 test("totals are restricted to the chat's dataset", () => {

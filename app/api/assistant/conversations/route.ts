@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 const threadCopy: Record<AssistantThreadDomain, { title: string; welcome: string }> = {
   chief_of_staff: {
     title: "New Chief of Staff chat",
-    welcome: "I can help you set priorities across strength, running, and nutrition. Ask for a current brief or tell me what decision is on your mind.",
+    welcome: "I can set priorities across strength, running, and nutrition and delegate focused reviews to each coach. Ask for a current brief or tell me what needs attention.",
   },
   general: {
     title: "New general chat",

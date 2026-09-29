@@ -24,7 +24,8 @@ export const nutritionToolNames = [
 ] as const;
 
 export const generalToolNames = ["query_personal_totals", "get_next_workout"] as const;
-export const chiefOfStaffToolNames = ["get_chief_of_staff_brief", "get_shared_coaching_goals"] as const;
+export const chiefOfStaffToolNames = ["get_chief_of_staff_brief", "get_shared_coaching_goals",
+  "get_delegated_tasks", "delegate_specialist_task"] as const;
 
 export const domainToolNames: Partial<Record<AssistantDomain, readonly string[]>> = {
   strength: strengthToolNames,

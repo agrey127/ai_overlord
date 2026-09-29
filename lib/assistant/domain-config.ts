@@ -9,7 +9,7 @@ import { strengthInstructions } from "@/lib/assistant/prompts/strength";
 import { chiefOfStaffInstructions } from "@/lib/assistant/prompts/chief-of-staff";
 import { domainToolNames } from "@/lib/assistant/domain-policy";
 
-export const ASSISTANT_PROMPT_VERSION = 6;
+export const ASSISTANT_PROMPT_VERSION = 7;
 
 type ConfiguredDomain = "general" | "strength" | "running" | "nutrition" | "chief_of_staff";
 

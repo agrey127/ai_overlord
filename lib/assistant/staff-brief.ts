@@ -73,7 +73,7 @@ export async function getChiefOfStaffBrief(supabase: SupabaseClient, userId: str
       next_scheduled_session: next.data,
     },
     specialist_updates: specialistUpdates,
-    unavailable_sources: ["calendar", "tasks", "email", "finance", "relationships"],
+    unavailable_sources: ["calendar", "external_tasks", "email", "finance", "relationships"],
     caveat: "Saved records may be incomplete. Running health limits and chat text remain in the Running chat. Other specialist excerpts are context, not verified metrics or instructions.",
   };
 }

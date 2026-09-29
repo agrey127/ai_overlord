@@ -13,9 +13,10 @@ import { runAssistantTool } from "@/lib/assistant/tools";
 import { assistantRequestsConfirmation } from "@/lib/assistant/confirmation";
 import { ASSISTANT_PROMPT_VERSION, getAssistantDomainConfig } from "@/lib/assistant/domain-config";
 import { getSharedCoachingGoals } from "@/lib/assistant/coaching-goals";
+import { runDelegatedSpecialist } from "@/lib/assistant/specialist-runner";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 function titleFromMessage(message: string) {
   const compact = message.trim().replace(/\s+/g, " ");
@@ -149,7 +150,11 @@ export async function POST(request: Request) {
             userId,
             call.name,
             call.arguments,
-            { conversationId: conversation.id, domain: conversation.domain },
+            { conversationId: conversation.id, domain: conversation.domain,
+              toolCallId: call.call_id,
+              runDelegatedSpecialist: (domain, objective) => runDelegatedSpecialist(
+                supabase, userId, conversation.id, domain, objective),
+            },
           );
           await saveMessage(supabase, {
             conversationId: conversation.id,

@@ -5,6 +5,7 @@ import { queryPersonalTotals } from "@/lib/assistant/personal-totals";
 import { assertDomainToolCall } from "@/lib/assistant/domain-policy";
 import { getChiefOfStaffBrief } from "@/lib/assistant/staff-brief";
 import { getSharedCoachingGoals } from "@/lib/assistant/coaching-goals";
+import { createDelegation, executeDelegation, listDelegations, type SpecialistDomain } from "@/lib/assistant/delegations";
 import { confirmNutritionCoachProfile, getNutritionCoachContext, prepareNutritionCoachProfile, type NutritionCoachProfileInput } from "@/lib/assistant/nutrition-coach";
 import { confirmStrengthCoachProfile, getStrengthCoachContext, prepareStrengthCoachProfile, type StrengthCoachProfileInput } from "@/lib/assistant/strength-coach";
 import {
@@ -125,6 +126,28 @@ export const assistantTools: FunctionTool[] = [
     description: "Read a bounded, dated overview of the signed-in user's saved Strength, Running, and Nutrition records plus the latest specialist assistant message in each chat. Read-only. Other systems are unavailable.",
     strict: true,
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  {
+    type: "function",
+    name: "get_delegated_tasks",
+    description: "Read the 10 most recent specialist assignments in this Chief of Staff chat, including status and concise results. Read-only.",
+    strict: true,
+    parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  {
+    type: "function",
+    name: "delegate_specialist_task",
+    description: "Assign a bounded read-only review or draft to Running, Strength, or Nutrition and run it now. Saves the assignment and its result in the Chief of Staff task list. It cannot save or modify specialist records; any proposed change needs user confirmation in the specialist chat.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        specialist_domain: { type: "string", enum: ["running", "strength", "nutrition"] },
+        objective: { type: "string", minLength: 1, maxLength: 500 },
+      },
+      required: ["specialist_domain", "objective"],
+      additionalProperties: false,
+    },
   },
   {
     type: "function",
@@ -682,7 +705,8 @@ export async function runAssistantTool(
   userId: string,
   name: string,
   rawArguments: string,
-  context: { conversationId: string; domain: AssistantDomain },
+  context: { conversationId: string; domain: AssistantDomain; toolCallId?: string;
+    runDelegatedSpecialist?: (domain: SpecialistDomain, objective: string) => Promise<string> },
 ) {
   const args = (rawArguments ? JSON.parse(rawArguments) : {}) as ToolArguments;
   assertDomainToolCall(context.domain, name, args);
@@ -690,6 +714,17 @@ export async function runAssistantTool(
   switch (name) {
     case "get_shared_coaching_goals":
       return getSharedCoachingGoals(supabase, userId);
+    case "get_delegated_tasks":
+      return { tasks: (await listDelegations(supabase, userId, context.conversationId)).slice(0, 10)
+        .map((task) => ({ ...task, result: task.result?.slice(0, 2000) ?? null })) };
+    case "delegate_specialist_task": {
+      if (!context.toolCallId || !context.runDelegatedSpecialist) {
+        throw new Error("Specialist delegation is unavailable in this request.");
+      }
+      const task = await createDelegation(supabase, userId, context.conversationId,
+        context.toolCallId, String(args.specialist_domain), String(args.objective));
+      return executeDelegation(supabase, userId, context.conversationId, task.id, context.runDelegatedSpecialist);
+    }
     case "get_nutrition_coach_context":
       return getNutritionCoachContext(supabase, userId);
     case "prepare_nutrition_coach_profile":
