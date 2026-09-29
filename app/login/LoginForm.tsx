@@ -21,12 +21,13 @@ export default function LoginForm() {
     event.preventDefault();
     setSending(true);
     setMessage("");
+    const desktop = Boolean(window.baselineDesktop);
     const { error } = await getBrowserSupabase().auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: `${window.location.origin}/baseline/assistant`, shouldCreateUser: false },
+      options: { emailRedirectTo: desktop ? "baseline-desktop://auth/callback" : `${window.location.origin}/baseline/assistant`, shouldCreateUser: false },
     });
-    setMessage(error ? error.message : window.baselineDesktop
-      ? "Check your email. Copy the sign-in link, then choose ‘Sign in with copied link’ from the Baseline tray menu."
+    setMessage(error ? error.message : desktop
+      ? "Check your email and open the sign-in link. If Windows asks, allow it to open Baseline."
       : "Check your email for your sign-in link. It will sign you in across Baseline.");
     setSending(false);
   }

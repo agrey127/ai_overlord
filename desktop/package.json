@@ -1,6 +1,6 @@
 {
   "name": "baseline-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Windows companion for Baseline",
   "author": "Baseline",
@@ -17,6 +17,12 @@
   "build": {
     "appId": "local.baseline.desktop",
     "productName": "Baseline",
+    "protocols": {
+      "name": "Baseline Desktop sign-in",
+      "schemes": [
+        "baseline-desktop"
+      ]
+    },
     "directories": {
       "output": "dist"
     },

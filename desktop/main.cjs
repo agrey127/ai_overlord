@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const ASSISTANT_PATH = "/baseline/assistant";
+const AUTH_PROTOCOL = "baseline-desktop:";
 const OPEN_SHORTCUT = "Control+Alt+B";
 const CONFIG_NAME = "desktop-settings.json";
 const DEFAULT_SETTINGS = { serverUrl: "", wakeEnabled: true, launchAtLogin: true };
@@ -172,6 +173,35 @@ function showSetup() {
   void window.loadFile(path.join(__dirname, "setup.html"));
 }
 
+function authCallbackUrl(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== AUTH_PROTOCOL || url.hostname !== "auth" || url.pathname !== "/callback"
+      || url.username || url.password || url.port) return null;
+    return url;
+  } catch { return null; }
+}
+
+function handleAuthCallback(value) {
+  const callback = authCallbackUrl(value);
+  if (!callback) return false;
+  if (!settings.serverUrl) { showSetup(); return true; }
+  if (!window || window.isDestroyed()) createWindow();
+  const code = callback.searchParams.get("code");
+  const target = new URL(code && code.length <= 2048 ? assistantUrl() : `${settings.serverUrl}/login`);
+  if (code && code.length <= 2048) target.searchParams.set("code", code);
+  else target.searchParams.set("error", "link");
+  void window.loadURL(target.href);
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+  return true;
+}
+
+function commandLineAuthCallback(argv) {
+  return argv.map(authCallbackUrl).find(Boolean)?.href ?? null;
+}
+
 function useCopiedSignInLink() {
   if (!settings.serverUrl) return showSetup();
   const copied = clipboard.readText().trim();
@@ -182,7 +212,8 @@ function useCopiedSignInLink() {
   let redirectOrigin = null;
   try { redirectOrigin = new URL(url.searchParams.get("redirect_to") || "").origin; } catch { /* no redirect */ }
   const supabaseVerify = url.protocol === "https:" && url.hostname.endsWith(".supabase.co")
-    && url.pathname.startsWith("/auth/v1/verify") && redirectOrigin === origin;
+    && url.pathname.startsWith("/auth/v1/verify")
+    && (redirectOrigin === origin || authCallbackUrl(url.searchParams.get("redirect_to")));
   if (!sameApp && !supabaseVerify) {
     return dialog.showErrorBox("Sign-in link", "That link does not point back to this Baseline server.");
   }
@@ -196,7 +227,7 @@ function updateTray() {
   if (!tray) return;
   const menu = Menu.buildFromTemplate([
     { label: "Open Baseline", click: showAssistant },
-    { label: "Sign in with copied link", click: useCopiedSignInLink },
+    { label: "Sign in with copied link (fallback)", click: useCopiedSignInLink },
     { type: "separator" },
     { label: "Wake word: Hello Baseline", type: "checkbox", checked: settings.wakeEnabled, click: (item) => {
       settings.wakeEnabled = item.checked;
@@ -237,19 +268,30 @@ function createWindow() {
     return { action: "deny" };
   });
   window.webContents.on("will-navigate", (event, destination) => {
+    if (authCallbackUrl(destination)) { event.preventDefault(); handleAuthCallback(destination); return; }
     const next = new URL(destination);
     if (next.protocol === "file:" && !settings.serverUrl) return;
     if (next.origin === currentOrigin()) { allowedAuthOrigin = null; return; }
     if (next.origin === allowedAuthOrigin && next.pathname.startsWith("/auth/v1/verify")) return;
     event.preventDefault();
   });
+  window.webContents.on("will-redirect", (event, destination) => {
+    if (authCallbackUrl(destination)) { event.preventDefault(); handleAuthCallback(destination); }
+  });
   window.on("close", (event) => { if (!quitting) { event.preventDefault(); window.hide(); } });
   window.on("closed", () => { window = null; });
   return window;
 }
 
+if (process.defaultApp && process.argv.length >= 2) {
+  app.setAsDefaultProtocolClient("baseline-desktop", process.execPath, [path.resolve(process.argv[1])]);
+} else app.setAsDefaultProtocolClient("baseline-desktop");
+
 if (!app.requestSingleInstanceLock()) app.quit();
-else app.on("second-instance", showAssistant);
+else app.on("second-instance", (_event, argv) => {
+  const callback = commandLineAuthCallback(argv);
+  if (!callback || !handleAuthCallback(callback)) showAssistant();
+});
 
 app.whenReady().then(() => {
   loadSettings();
@@ -261,7 +303,10 @@ app.whenReady().then(() => {
   updateTray();
   globalShortcut.register(OPEN_SHORTCUT, showAssistant);
   startWakeBridge();
-  if (settings.serverUrl) showAssistant(); else showSetup();
+  const callback = commandLineAuthCallback(process.argv);
+  if (!callback || !handleAuthCallback(callback)) {
+    if (settings.serverUrl) showAssistant(); else showSetup();
+  }
 });
 
 ipcMain.handle("baseline:get-server-url", () => settings.serverUrl);
