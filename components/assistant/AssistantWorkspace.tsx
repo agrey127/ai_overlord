@@ -171,6 +171,9 @@ export default function AssistantWorkspace() {
   const [contextOpen, setContextOpen] = useState(false);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLInputElement>(null);
+  const waitingForWisprPasteRef = useRef(false);
+  const voiceTurnRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingImagesRef = useRef<PendingImage[]>([]);
   const dateLabel = useMemo(() => new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date()), []);
@@ -247,6 +250,8 @@ export default function AssistantWorkspace() {
 
   async function sendMessage(text: string, attachedImages: PendingImage[] = []) {
     const clean = text.trim(); if ((!clean && !attachedImages.length) || loading) return;
+    const fromVoice = voiceTurnRef.current;
+    voiceTurnRef.current = false;
     if (!signedIn) { router.push("/login"); return; }
     if (!selectedId) { setError("Choose a chat before sending a message."); return; }
     if (attachedImages.length && !isRunningChat) { setError("Garmin run screenshots belong in the Running chat."); return; }
@@ -269,6 +274,7 @@ export default function AssistantWorkspace() {
       const data = await readAssistantResponse(response);
       if (!response.ok) throw new Error(data.error ?? "The assistant could not complete that request.");
       setMessages((current) => [...current, data.message]); setWorkout(data.workout); setSelectedId(data.conversationId);
+      if (fromVoice && window.baselineDesktop) void speakAssistantReply(data.message, data.conversationId);
       if (attachedImages.length) {
         attachedImages.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
         setPendingImages([]);
@@ -277,7 +283,67 @@ export default function AssistantWorkspace() {
       await loadContext(data.conversationId);
     } catch (e) {
       setMessages((current) => current.filter((message) => message.id !== optimistic.id)); setError(e instanceof Error ? e.message : "Something went wrong.");
+      if (fromVoice) window.baselineDesktop?.turnFailed();
     } finally { setLoading(false); }
+  }
+
+  async function speakAssistantReply(message: AssistantMessage, conversationId: string) {
+    const desktop = window.baselineDesktop;
+    if (!desktop) return;
+    desktop.replyStarted();
+    let audioUrl: string | null = null;
+    try {
+      const response = await fetch("/api/assistant/speech", {
+        method: "POST",
+        headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId, messageId: message.id }),
+      });
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        throw new Error(data.error ?? "Baseline could not speak this reply.");
+      }
+      audioUrl = URL.createObjectURL(await response.blob());
+      const audio = new Audio(audioUrl);
+      await new Promise<void>((resolve, reject) => {
+        audio.onended = () => resolve();
+        audio.onerror = () => reject(new Error("Baseline could not play this reply."));
+        void audio.play().catch(reject);
+      });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Baseline could not speak this reply.");
+    } finally {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      desktop.replyFinished();
+    }
+  }
+
+  useEffect(() => {
+    const desktop = window.baselineDesktop;
+    if (!desktop) return;
+    const stopFocus = desktop.onFocusComposer(() => {
+      if (!signedIn || !selectedId || selectedId.startsWith("demo-") || loading) return;
+      composerRef.current?.focus();
+      composerRef.current?.select();
+      if (document.activeElement === composerRef.current) desktop.composerReady();
+    });
+    const stopDictation = desktop.onDictationStop(() => { waitingForWisprPasteRef.current = true; });
+    const stopError = desktop.onVoiceError((message) => { waitingForWisprPasteRef.current = false; setError(message); });
+    desktop.assistantReady();
+    return () => { stopFocus(); stopDictation(); stopError(); };
+  }, [signedIn, selectedId, loading]);
+
+  function onComposerChange(value: string) {
+    if (!waitingForWisprPasteRef.current) { setDraft(value); return; }
+    waitingForWisprPasteRef.current = false;
+    const dictated = value.replace(/[\s,.;!?]*send it[.!?\s]*$/i, "").trim();
+    if (!dictated) {
+      setError("Wispr did not insert a message. Try again.");
+      window.baselineDesktop?.turnFailed();
+      return;
+    }
+    window.baselineDesktop?.dictationPasted();
+    voiceTurnRef.current = true;
+    void sendMessage(dictated);
   }
 
   async function finishWorkout() {
@@ -430,7 +496,7 @@ export default function AssistantWorkspace() {
           <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); void sendMessage(draft, pendingImages); }}>
             {isRunningChat ? <><input ref={fileInputRef} className={styles.fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { addImages(event.target.files); event.target.value = ""; }} />
             <button className={styles.attachButton} type="button" disabled={loading} onClick={() => fileInputRef.current?.click()} aria-label="Attach Garmin screenshots"><Icon name="paperclip" /></button></> : null}
-            <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask Baseline anything…" aria-label="Message Baseline" />
+            <input ref={composerRef} value={draft} onChange={(event) => onComposerChange(event.target.value)} placeholder="Ask Baseline anything…" aria-label="Message Baseline" />
             <button disabled={(!draft.trim() && !pendingImages.length) || loading} aria-label="Send message"><Icon name="send" /></button>
           </form>
         </div>

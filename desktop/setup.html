@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Connect Baseline</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Segoe UI", sans-serif; background: #101725; color: #f4f7fc; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; }
+    main { width: min(440px, calc(100vw - 48px)); padding: 30px; border: 1px solid #33405a; border-radius: 18px; background: #1a2538; box-shadow: 0 18px 60px #0006; }
+    h1 { margin: 0 0 10px; font-size: 27px; } p { color: #bdc9dc; line-height: 1.5; }
+    label { display: block; margin: 26px 0 8px; font-weight: 600; }
+    input { box-sizing: border-box; width: 100%; padding: 13px; border: 1px solid #657492; border-radius: 9px; background: #111a2b; color: white; font: inherit; }
+    button { margin-top: 16px; padding: 12px 18px; border: 0; border-radius: 9px; background: #a5d8c0; color: #13241c; font: inherit; font-weight: 700; cursor: pointer; }
+    small { display: block; margin-top: 14px; color: #9baac1; } #error { color: #ffb7b7; min-height: 1.4em; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Connect Baseline</h1>
+    <p>Enter the address you use to open Baseline over Tailscale. The Windows app will remember it on this computer.</p>
+    <form id="setup">
+      <label for="url">Baseline address</label>
+      <input id="url" type="url" placeholder="https://your-server.your-tailnet.ts.net" autocomplete="url" required>
+      <button type="submit">Connect</button>
+    </form>
+    <p id="error" role="alert"></p>
+    <small>After requesting a sign-in email, copy its link and choose “Sign in with copied link” from the Baseline tray menu.</small>
+  </main>
+  <script>
+    const form = document.getElementById("setup");
+    const input = document.getElementById("url");
+    const error = document.getElementById("error");
+    window.baselineDesktop.getServerUrl().then((value) => { if (value) input.value = value; });
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      const result = await window.baselineDesktop.setServerUrl(input.value);
+      if (!result.ok) error.textContent = result.error;
+    });
+  </script>
+</body>
+</html>

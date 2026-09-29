@@ -1,5 +1,12 @@
 AI Overlord (Baseline) is a private Next.js application.
 
+## Windows voice companion
+
+The optional [Windows companion](desktop/README.md) opens Baseline as a desktop
+app, uses a local wake phrase to start Wispr Flow dictation, and speaks replies
+through an authenticated server endpoint. It uses the server's existing
+`OPENAI_API_KEY`; the key is not stored in the desktop package.
+
 ## Sign-in
 
 All `/baseline` pages use one Supabase email sign-in at `/login`. The browser and
