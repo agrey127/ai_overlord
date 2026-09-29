@@ -4,6 +4,8 @@ import type { ActivityType, AssistantDomain, StrengthTrainingRole } from "@/lib/
 import { queryPersonalTotals } from "@/lib/assistant/personal-totals";
 import { assertDomainToolCall } from "@/lib/assistant/domain-policy";
 import { getChiefOfStaffBrief } from "@/lib/assistant/staff-brief";
+import { getSharedCoachingGoals } from "@/lib/assistant/coaching-goals";
+import { confirmStrengthCoachProfile, getStrengthCoachContext, prepareStrengthCoachProfile, type StrengthCoachProfileInput } from "@/lib/assistant/strength-coach";
 import {
   confirmRunningCoachDraft,
   getRunningCoachContext,
@@ -42,6 +44,48 @@ import {
 } from "@/lib/assistant/repository";
 
 export const assistantTools: FunctionTool[] = [
+  {
+    type: "function",
+    name: "get_shared_coaching_goals",
+    description: "Read the signed-in user's structured Running and Strength goals. This never returns free-text health limits or other chat histories. Nutrition goals are unavailable until configured. Read-only.",
+    strict: true,
+    parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  {
+    type: "function",
+    name: "get_strength_coach_context",
+    description: "Read the Strength coach profile, ordered workout rotation, current or next workout, recent saved sessions, progress, and shared structured goals. Call before personalized strength advice or programming. Read-only.",
+    strict: true,
+    parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  {
+    type: "function",
+    name: "prepare_strength_coach_profile",
+    description: "Prepare a complete Strength coach goal profile for explicit user confirmation. Read the current profile first and preserve fields the user did not ask to change. Weekdays use Monday=1 through Sunday=7; an empty available_days array means flexible days.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        primary_goal: { type: "string", enum: ["maintain_strength", "build_strength", "build_muscle", "general_fitness"] },
+        goal_description: { type: "string", maxLength: 500 },
+        min_sessions_per_week: { type: "integer", minimum: 1, maximum: 7 },
+        max_sessions_per_week: { type: "integer", minimum: 1, maximum: 7 },
+        available_days: { type: "array", items: { type: "integer", minimum: 1, maximum: 7 }, maxItems: 7 },
+        preferred_session_minutes: { type: ["integer", "null"], minimum: 15, maximum: 240 },
+        equipment: { type: ["string", "null"], maxLength: 500 },
+        training_limits: { type: ["string", "null"], maxLength: 1000 },
+      },
+      required: ["primary_goal", "goal_description", "min_sessions_per_week", "max_sessions_per_week", "available_days", "preferred_session_minutes", "equipment", "training_limits"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "confirm_strength_coach_profile",
+    description: "Save the exact pending Strength coach profile draft only after explicit user confirmation of its full preview. Repeated confirmation is idempotent and drafts are bound to the Strength conversation.",
+    strict: true,
+    parameters: { type: "object", properties: { draft_id: { type: "string" } }, required: ["draft_id"], additionalProperties: false },
+  },
   {
     type: "function",
     name: "get_chief_of_staff_brief",
@@ -583,7 +627,7 @@ async function assertDraftBelongsToConversation(
   userId: string,
   conversationId: string,
   draftId: string,
-  table: "assistant_meal_drafts" | "assistant_activity_drafts" | "running_coach_drafts",
+  table: "assistant_meal_drafts" | "assistant_activity_drafts" | "running_coach_drafts" | "strength_coach_drafts",
 ) {
   const { data, error } = await supabase.from(table)
     .select("conversation_id,payload")
@@ -611,6 +655,24 @@ export async function runAssistantTool(
   assertDomainToolCall(context.domain, name, args);
 
   switch (name) {
+    case "get_shared_coaching_goals":
+      return getSharedCoachingGoals(supabase, userId);
+    case "get_strength_coach_context":
+      return getStrengthCoachContext(supabase, userId);
+    case "prepare_strength_coach_profile":
+      return prepareStrengthCoachProfile(supabase, userId, context.conversationId, {
+        primary_goal: String(args.primary_goal) as StrengthCoachProfileInput["primary_goal"],
+        goal_description: String(args.goal_description),
+        min_sessions_per_week: Number(args.min_sessions_per_week),
+        max_sessions_per_week: Number(args.max_sessions_per_week),
+        available_days: Array.isArray(args.available_days) ? args.available_days.map(Number) : [],
+        preferred_session_minutes: args.preferred_session_minutes == null ? null : Number(args.preferred_session_minutes),
+        equipment: args.equipment == null ? null : String(args.equipment),
+        training_limits: args.training_limits == null ? null : String(args.training_limits),
+      });
+    case "confirm_strength_coach_profile":
+      await assertDraftBelongsToConversation(supabase, userId, context.conversationId, String(args.draft_id), "strength_coach_drafts");
+      return confirmStrengthCoachProfile(supabase, userId, context.conversationId, String(args.draft_id));
     case "get_chief_of_staff_brief":
       return getChiefOfStaffBrief(supabase, userId);
     case "query_personal_totals":

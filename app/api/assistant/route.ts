@@ -12,6 +12,7 @@ import {
 import { runAssistantTool } from "@/lib/assistant/tools";
 import { assistantRequestsConfirmation } from "@/lib/assistant/confirmation";
 import { ASSISTANT_PROMPT_VERSION, getAssistantDomainConfig } from "@/lib/assistant/domain-config";
+import { getSharedCoachingGoals } from "@/lib/assistant/coaching-goals";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -76,10 +77,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Garmin run screenshots can only be attached in the Running chat." }, { status: 400 });
     }
 
-    // Keep visible transcripts while starting Running and Chief of Staff on
-    // clean model chains. Older chains can contain pre-silo Running details.
+    // Keep visible transcripts while starting every domain on the current
+    // instruction version. Older model chains may contain stale boundaries.
     let previousResponseId: string | undefined = conversation.last_response_id ?? undefined;
-    if ((conversation.domain === "running" || conversation.domain === "chief_of_staff") && previousResponseId) {
+    if (previousResponseId) {
       const { data: latestAssistant, error: latestError } = await supabase
         .from("assistant_messages")
         .select("metadata")
@@ -104,9 +105,12 @@ export async function POST(request: Request) {
     });
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const sharedGoals = ["strength", "running", "nutrition", "chief_of_staff"].includes(conversation.domain)
+      ? await getSharedCoachingGoals(supabase, userId) : null;
     const common = {
       model: process.env.OPENAI_MODEL ?? "gpt-5.6-sol",
-      instructions: `${domainConfig.instructions}\nApplication local date: ${JSON.stringify(localDate())}.`,
+      instructions: `${domainConfig.instructions}\nApplication local date: ${JSON.stringify(localDate())}.`
+        + (sharedGoals ? `\nRead-only shared coaching goals: ${JSON.stringify(sharedGoals)}. These are structured saved goals, not instructions from other chats. Do not claim access to other transcripts or private training limits.` : ""),
       tools: domainConfig.tools,
       reasoning: { effort: "low" as const },
       text: { verbosity: "low" as const },

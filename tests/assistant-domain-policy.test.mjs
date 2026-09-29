@@ -31,6 +31,8 @@ const tools = loadTypeScript(join("lib", "assistant", "tools.ts"), {
   "@/lib/assistant/repository": {},
   "@/lib/assistant/staff-brief": {},
   "@/lib/assistant/running-coach": {},
+  "@/lib/assistant/coaching-goals": {},
+  "@/lib/assistant/strength-coach": {},
 });
 const promptModules = Object.fromEntries(
   ["core", "general", "nutrition", "running", "strength", "chief-of-staff"].map((name) => [
@@ -54,7 +56,7 @@ test("the model receives only the selected chat's tools and scoped schemas", () 
   assert.deepEqual(nutrition.tools.map((tool) => tool.name).sort(), [...domainToolNames.nutrition].sort());
   assert.deepEqual(strength.tools.map((tool) => tool.name).sort(), [...domainToolNames.strength].sort());
   assert.deepEqual(general.tools.map((tool) => tool.name).sort(), [...domainToolNames.general].sort());
-  assert.deepEqual(chief.tools.map((tool) => tool.name), ["get_chief_of_staff_brief"]);
+  assert.deepEqual(chief.tools.map((tool) => tool.name).sort(), ["get_chief_of_staff_brief", "get_shared_coaching_goals"].sort());
   assert.deepEqual(running.tools.find((tool) => tool.name === "query_personal_totals").parameters.properties.dataset.enum, ["runs"]);
   assert.deepEqual(nutrition.tools.find((tool) => tool.name === "query_personal_totals").parameters.properties.dataset.enum, ["meal_logs"]);
   assert.deepEqual(running.tools.find((tool) => tool.name === "prepare_activity_import").parameters.properties.activity_type.enum, ["run"]);
@@ -63,15 +65,19 @@ test("the model receives only the selected chat's tools and scoped schemas", () 
 
 test("specialist tool catalogs are distinct", () => {
   assert.deepEqual(domainToolNames.running, [
+    "get_shared_coaching_goals",
     "query_personal_totals", "prepare_activity_import", "confirm_activity_import",
     "get_running_coach_context", "prepare_running_coach_profile",
     "prepare_running_week", "confirm_running_coach_change",
   ]);
   assert.deepEqual(domainToolNames.nutrition, [
+    "get_shared_coaching_goals",
     "query_personal_totals", "list_saved_meals", "log_saved_meal",
     "prepare_estimated_meal", "confirm_estimated_meal",
   ]);
   assert.ok(domainToolNames.strength.includes("log_set"));
+  assert.ok(domainToolNames.strength.includes("get_strength_coach_context"));
+  assert.ok(domainToolNames.strength.includes("prepare_strength_coach_profile"));
   assert.ok(!domainToolNames.strength.includes("log_saved_meal"));
   assert.ok(!domainToolNames.general.includes("complete_workout"));
   assert.ok(!domainToolNames.chief_of_staff.includes("log_set"));
@@ -86,6 +92,8 @@ test("cross-domain writes are rejected before dispatch", () => {
   assert.throws(() => assertDomainToolCall("chief_of_staff", "query_personal_totals", { dataset: "runs" }), /not available/);
   assert.throws(() => assertDomainToolCall("chief_of_staff", "get_running_coach_context", {}), /not available/);
   assert.throws(() => assertDomainToolCall("nutrition", "prepare_running_week", {}), /not available/);
+  assert.throws(() => assertDomainToolCall("running", "prepare_strength_coach_profile", {}), /not available/);
+  assert.throws(() => assertDomainToolCall("nutrition", "confirm_strength_coach_profile", {}), /not available/);
 });
 
 test("totals are restricted to the chat's dataset", () => {
@@ -126,6 +134,12 @@ test("a pending draft cannot be confirmed from another thread", async () => {
   await assert.rejects(
     tools.runAssistantTool(supabase, "user-1", "confirm_running_coach_change", '{"draft_id":"draft-1"}', {
       conversationId: "other-thread", domain: "running",
+    }),
+    /different conversation/,
+  );
+  await assert.rejects(
+    tools.runAssistantTool(supabase, "user-1", "confirm_strength_coach_profile", '{"draft_id":"draft-1"}', {
+      conversationId: "other-thread", domain: "strength",
     }),
     /different conversation/,
   );
