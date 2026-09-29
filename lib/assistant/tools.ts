@@ -5,6 +5,7 @@ import { queryPersonalTotals } from "@/lib/assistant/personal-totals";
 import { assertDomainToolCall } from "@/lib/assistant/domain-policy";
 import { getChiefOfStaffBrief } from "@/lib/assistant/staff-brief";
 import { getSharedCoachingGoals } from "@/lib/assistant/coaching-goals";
+import { confirmNutritionCoachProfile, getNutritionCoachContext, prepareNutritionCoachProfile, type NutritionCoachProfileInput } from "@/lib/assistant/nutrition-coach";
 import { confirmStrengthCoachProfile, getStrengthCoachContext, prepareStrengthCoachProfile, type StrengthCoachProfileInput } from "@/lib/assistant/strength-coach";
 import {
   confirmRunningCoachDraft,
@@ -47,9 +48,41 @@ export const assistantTools: FunctionTool[] = [
   {
     type: "function",
     name: "get_shared_coaching_goals",
-    description: "Read the signed-in user's structured Running and Strength goals. This never returns free-text health limits or other chat histories. Nutrition goals are unavailable until configured. Read-only.",
+    description: "Read the signed-in user's structured Running, Strength, and Nutrition goals. This never returns free-text health limits or other chat histories. Read-only.",
     strict: true,
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  {
+    type: "function",
+    name: "get_nutrition_coach_context",
+    description: "Read the Nutrition phase goal, recent daily logged meal totals, recent weight entries, and structured goals. Call before personalized Nutrition review or advice. Missing meal days are data gaps. Read-only.",
+    strict: true,
+    parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  {
+    type: "function",
+    name: "prepare_nutrition_coach_profile",
+    description: "Prepare a Nutrition phase profile for confirmation. Read the current profile first and preserve fields the user did not ask to change. Dates are YYYY-MM-DD; approximate loss is a goal, not a calorie prescription.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        deficit_start_date: { type: "string" },
+        maintenance_start_date: { type: "string" },
+        maintenance_end_date: { type: "string" },
+        approx_target_loss_lbs: { type: ["number", "null"] },
+        review_style: { type: "string", enum: ["review_logs", "plan_and_review", "track_targets"] },
+      },
+      required: ["deficit_start_date", "maintenance_start_date", "maintenance_end_date", "approx_target_loss_lbs", "review_style"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "confirm_nutrition_coach_profile",
+    description: "Save the exact pending Nutrition phase profile only after explicit user confirmation of its preview. Drafts are bound to this Nutrition conversation.",
+    strict: true,
+    parameters: { type: "object", properties: { draft_id: { type: "string" } }, required: ["draft_id"], additionalProperties: false },
   },
   {
     type: "function",
@@ -627,7 +660,7 @@ async function assertDraftBelongsToConversation(
   userId: string,
   conversationId: string,
   draftId: string,
-  table: "assistant_meal_drafts" | "assistant_activity_drafts" | "running_coach_drafts" | "strength_coach_drafts",
+  table: "assistant_meal_drafts" | "assistant_activity_drafts" | "running_coach_drafts" | "strength_coach_drafts" | "nutrition_coach_drafts",
 ) {
   const { data, error } = await supabase.from(table)
     .select("conversation_id,payload")
@@ -657,6 +690,19 @@ export async function runAssistantTool(
   switch (name) {
     case "get_shared_coaching_goals":
       return getSharedCoachingGoals(supabase, userId);
+    case "get_nutrition_coach_context":
+      return getNutritionCoachContext(supabase, userId);
+    case "prepare_nutrition_coach_profile":
+      return prepareNutritionCoachProfile(supabase, userId, context.conversationId, {
+        deficit_start_date: String(args.deficit_start_date),
+        maintenance_start_date: String(args.maintenance_start_date),
+        maintenance_end_date: String(args.maintenance_end_date),
+        approx_target_loss_lbs: args.approx_target_loss_lbs == null ? null : Number(args.approx_target_loss_lbs),
+        review_style: String(args.review_style) as NutritionCoachProfileInput["review_style"],
+      });
+    case "confirm_nutrition_coach_profile":
+      await assertDraftBelongsToConversation(supabase, userId, context.conversationId, String(args.draft_id), "nutrition_coach_drafts");
+      return confirmNutritionCoachProfile(supabase, userId, context.conversationId, String(args.draft_id));
     case "get_strength_coach_context":
       return getStrengthCoachContext(supabase, userId);
     case "prepare_strength_coach_profile":

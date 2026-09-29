@@ -18,7 +18,7 @@ export const runningToolNames = [
 ] as const;
 
 export const nutritionToolNames = [
-  "get_shared_coaching_goals",
+  "get_shared_coaching_goals", "get_nutrition_coach_context", "prepare_nutrition_coach_profile", "confirm_nutrition_coach_profile",
   "query_personal_totals", "list_saved_meals", "log_saved_meal",
   "prepare_estimated_meal", "confirm_estimated_meal",
 ] as const;

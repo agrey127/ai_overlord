@@ -33,6 +33,7 @@ const tools = loadTypeScript(join("lib", "assistant", "tools.ts"), {
   "@/lib/assistant/running-coach": {},
   "@/lib/assistant/coaching-goals": {},
   "@/lib/assistant/strength-coach": {},
+  "@/lib/assistant/nutrition-coach": {},
 });
 const promptModules = Object.fromEntries(
   ["core", "general", "nutrition", "running", "strength", "chief-of-staff"].map((name) => [
@@ -71,7 +72,7 @@ test("specialist tool catalogs are distinct", () => {
     "prepare_running_week", "confirm_running_coach_change",
   ]);
   assert.deepEqual(domainToolNames.nutrition, [
-    "get_shared_coaching_goals",
+    "get_shared_coaching_goals", "get_nutrition_coach_context", "prepare_nutrition_coach_profile", "confirm_nutrition_coach_profile",
     "query_personal_totals", "list_saved_meals", "log_saved_meal",
     "prepare_estimated_meal", "confirm_estimated_meal",
   ]);
@@ -94,6 +95,7 @@ test("cross-domain writes are rejected before dispatch", () => {
   assert.throws(() => assertDomainToolCall("nutrition", "prepare_running_week", {}), /not available/);
   assert.throws(() => assertDomainToolCall("running", "prepare_strength_coach_profile", {}), /not available/);
   assert.throws(() => assertDomainToolCall("nutrition", "confirm_strength_coach_profile", {}), /not available/);
+  assert.throws(() => assertDomainToolCall("running", "confirm_nutrition_coach_profile", {}), /not available/);
 });
 
 test("totals are restricted to the chat's dataset", () => {
@@ -140,6 +142,12 @@ test("a pending draft cannot be confirmed from another thread", async () => {
   await assert.rejects(
     tools.runAssistantTool(supabase, "user-1", "confirm_strength_coach_profile", '{"draft_id":"draft-1"}', {
       conversationId: "other-thread", domain: "strength",
+    }),
+    /different conversation/,
+  );
+  await assert.rejects(
+    tools.runAssistantTool(supabase, "user-1", "confirm_nutrition_coach_profile", '{"draft_id":"draft-1"}', {
+      conversationId: "other-thread", domain: "nutrition",
     }),
     /different conversation/,
   );
