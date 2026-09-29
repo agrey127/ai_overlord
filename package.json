@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test tests/assistant-domain-policy.test.mjs"
+    "test": "node --test tests"
   },
   "dependencies": {
     "@supabase/ssr": "0.8.0",

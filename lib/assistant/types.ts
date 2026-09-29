@@ -30,7 +30,7 @@ export type ActivityDraft = {
   activity_type: ActivityType;
   activity_date: string;
   duration_minutes: number;
-  calories_burned: number;
+  calories_burned: number | null;
   distance_miles: number | null;
   average_heart_rate: number | null;
   cadence: number | null;

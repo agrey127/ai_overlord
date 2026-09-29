@@ -31,6 +31,20 @@ to the protected data; meal RPC write checks passed in a rolled-back
 transaction. Re-run these role-scoped checks after changing view dependencies
 or `dashboard_context` ownership.
 
+## Running coach
+
+The Running chat can build a saved goal profile and weekly run plan from recent
+individual runs, recovery records, and user-stated availability. It previews
+all changes before saving them, and its first reply after this upgrade begins
+a clean model response chain while keeping the visible transcript. The Running
+card shows the saved goal, current plan, and recent mileage. Run imports no
+longer require an estimated calorie value when the watch did not provide one.
+
+The Running coach reads only Running data plus limited recovery signals. Chief
+of Staff receives the current week's focus and planned mileage, but no Running
+chat excerpt or training limits. See `markdown/assistant_domains.md` for the
+tool boundary and migration notes.
+
 ## Getting Started
 
 First, run the development server:

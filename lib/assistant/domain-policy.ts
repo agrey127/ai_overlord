@@ -11,6 +11,8 @@ export const strengthToolNames = [
 
 export const runningToolNames = [
   "query_personal_totals", "prepare_activity_import", "confirm_activity_import",
+  "get_running_coach_context", "prepare_running_coach_profile",
+  "prepare_running_week", "confirm_running_coach_change",
 ] as const;
 
 export const nutritionToolNames = [

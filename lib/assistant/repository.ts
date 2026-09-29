@@ -974,7 +974,7 @@ export async function prepareActivityImport(
     activity_type: input.activity_type,
     activity_date: input.activity_date,
     duration_minutes: requiredActivityNumber(input.duration_minutes, "Duration", 0.01, 1440),
-    calories_burned: requiredActivityNumber(input.calories_burned, "Calories", 0, 10000),
+    calories_burned: optionalActivityNumber(input.calories_burned, "Calories", 10000),
     distance_miles: optionalActivityNumber(input.distance_miles, "Distance", 1000),
     average_heart_rate: optionalActivityNumber(input.average_heart_rate, "Average heart rate", 300),
     cadence: optionalActivityNumber(input.cadence, "Cadence", 300),
