@@ -76,6 +76,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Garmin run screenshots can only be attached in the Running chat." }, { status: 400 });
     }
 
+    // Keep visible transcripts while starting Running and Chief of Staff on
+    // clean model chains. Older chains can contain pre-silo Running details.
+    let previousResponseId: string | undefined = conversation.last_response_id ?? undefined;
+    if ((conversation.domain === "running" || conversation.domain === "chief_of_staff") && previousResponseId) {
+      const { data: latestAssistant, error: latestError } = await supabase
+        .from("assistant_messages")
+        .select("metadata")
+        .eq("conversation_id", conversation.id)
+        .eq("user_id", userId)
+        .eq("role", "assistant")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestError) throw new Error(`Unable to check assistant chat history: ${latestError.message}`);
+      if (Number(latestAssistant?.metadata?.prompt_version) !== ASSISTANT_PROMPT_VERSION) {
+        previousResponseId = undefined;
+      }
+    }
+
     await saveMessage(supabase, {
       conversationId: conversation.id,
       userId,
@@ -107,7 +126,7 @@ export async function POST(request: Request) {
 
     let response = await client.responses.create({
       ...common,
-      previous_response_id: conversation.last_response_id ?? undefined,
+      previous_response_id: previousResponseId,
       input: [{ role: "user", content: userContent }],
     });
 

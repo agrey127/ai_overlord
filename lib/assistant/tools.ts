@@ -5,6 +5,14 @@ import { queryPersonalTotals } from "@/lib/assistant/personal-totals";
 import { assertDomainToolCall } from "@/lib/assistant/domain-policy";
 import { getChiefOfStaffBrief } from "@/lib/assistant/staff-brief";
 import {
+  confirmRunningCoachDraft,
+  getRunningCoachContext,
+  prepareRunningCoachProfile,
+  prepareRunningWeek,
+  type RunningCoachProfileInput,
+  type RunningWeekInput,
+} from "@/lib/assistant/running-coach";
+import {
   confirmActivityImport,
   confirmEstimatedMeal,
   completeTodayWorkout,
@@ -57,6 +65,77 @@ export const assistantTools: FunctionTool[] = [
       },
       required: ["dataset", "metric", "period", "start_date", "end_date"],
       additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "get_running_coach_context",
+    description: "Read the signed-in runner's saved goal, individual runs from the past 84 days, eight weekly totals, recent sleep/resting-heart-rate data, readiness signals, race records, and current weekly plans. Call before giving a personalized plan or review. Read-only and Running-only.",
+    strict: true,
+    parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+  },
+  {
+    type: "function",
+    name: "prepare_running_coach_profile",
+    description: "Prepare a full running-coach goal profile from the user's stated preferences. This only creates a confirmation draft. Preserve existing fields the user did not ask to change by reading the current profile first. Weekdays use Monday=1 through Sunday=7.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        goal_type: { type: "string", enum: ["race", "speed", "consistency", "general_fitness", "return_to_running"] },
+        goal_description: { type: "string", maxLength: 500 },
+        target_date: { type: ["string", "null"] },
+        target_distance_miles: { type: ["number", "null"] },
+        target_time_minutes: { type: ["number", "null"] },
+        available_days: { type: "array", items: { type: "integer", minimum: 1, maximum: 7 }, maxItems: 7 },
+        long_run_day: { type: ["integer", "null"], minimum: 1, maximum: 7 },
+        max_runs_per_week: { type: ["integer", "null"], minimum: 1, maximum: 7 },
+        weekly_mileage_target: { type: ["number", "null"] },
+        training_limits: { type: ["string", "null"], maxLength: 1000 },
+      },
+      required: ["goal_type", "goal_description", "target_date", "target_distance_miles", "target_time_minutes", "available_days", "long_run_day", "max_runs_per_week", "weekly_mileage_target", "training_limits"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "prepare_running_week",
+    description: "Prepare a dated one-week running plan for user confirmation. Read get_running_coach_context first and account for the saved goal, available days, recent training, recovery data freshness, and any stated limits. This does not save a plan.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        week_start: { type: "string", description: "Monday in YYYY-MM-DD format." },
+        focus: { type: "string", maxLength: 200 },
+        rationale: { type: "string", maxLength: 2000 },
+        sessions: {
+          type: "array", minItems: 1, maxItems: 7,
+          items: {
+            type: "object",
+            properties: {
+              date: { type: "string", description: "Session date in YYYY-MM-DD format." },
+              kind: { type: "string", enum: ["easy", "long", "workout", "recovery", "race", "rest"] },
+              distance_miles: { type: "number", minimum: 0, maximum: 100 },
+              effort: { type: "string", enum: ["easy", "moderate", "hard", "rest"] },
+              description: { type: "string", maxLength: 500 },
+            },
+            required: ["date", "kind", "distance_miles", "effort", "description"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["week_start", "focus", "rationale", "sessions"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "confirm_running_coach_change",
+    description: "Save the exact pending running goal or weekly-plan draft after the user explicitly confirms its preview. Repeated confirmation of the same draft is idempotent. A draft from another conversation cannot be confirmed here.",
+    strict: true,
+    parameters: {
+      type: "object", properties: { draft_id: { type: "string" } },
+      required: ["draft_id"], additionalProperties: false,
     },
   },
   {
@@ -132,7 +211,7 @@ export const assistantTools: FunctionTool[] = [
   {
     type: "function",
     name: "prepare_activity_import",
-    description: "Prepare a confirmation-required activity draft from Garmin screenshots or explicit user data. This does not save an activity. Use exact visible values only; convert kilometers to miles and metric pace to minutes per mile when necessary, and explain conversions to the user. Never guess missing values.",
+    description: "Prepare a confirmation-required activity draft from Garmin screenshots or explicit user data. This does not save an activity. Use exact visible values only; convert kilometers to miles and metric pace to minutes per mile when necessary, and explain conversions to the user. Never guess missing values. Calories may be null when the watch did not record them.",
     strict: true,
     parameters: {
       type: "object",
@@ -140,7 +219,7 @@ export const assistantTools: FunctionTool[] = [
         activity_type: { type: "string", enum: ["run", "bike", "walk", "swim", "strength", "other"] },
         activity_date: { type: "string", description: "Calendar date in YYYY-MM-DD format." },
         duration_minutes: { type: "number", minimum: 0, maximum: 1440 },
-        calories_burned: { type: "number", minimum: 0, maximum: 10000 },
+        calories_burned: { type: ["number", "null"], minimum: 0, maximum: 10000 },
         distance_miles: { type: ["number", "null"], minimum: 0, maximum: 1000 },
         average_heart_rate: { type: ["integer", "null"], minimum: 0, maximum: 300 },
         cadence: { type: ["integer", "null"], minimum: 0, maximum: 300 },
@@ -504,7 +583,7 @@ async function assertDraftBelongsToConversation(
   userId: string,
   conversationId: string,
   draftId: string,
-  table: "assistant_meal_drafts" | "assistant_activity_drafts",
+  table: "assistant_meal_drafts" | "assistant_activity_drafts" | "running_coach_drafts",
 ) {
   const { data, error } = await supabase.from(table)
     .select("conversation_id,payload")
@@ -542,6 +621,40 @@ export async function runAssistantTool(
         start_date: args.start_date == null ? null : String(args.start_date),
         end_date: args.end_date == null ? null : String(args.end_date),
       });
+    case "get_running_coach_context":
+      return getRunningCoachContext(supabase, userId);
+    case "prepare_running_coach_profile":
+      return prepareRunningCoachProfile(supabase, userId, context.conversationId, {
+        goal_type: String(args.goal_type) as RunningCoachProfileInput["goal_type"],
+        goal_description: String(args.goal_description),
+        target_date: args.target_date == null ? null : String(args.target_date),
+        target_distance_miles: args.target_distance_miles == null ? null : Number(args.target_distance_miles),
+        target_time_minutes: args.target_time_minutes == null ? null : Number(args.target_time_minutes),
+        available_days: Array.isArray(args.available_days) ? args.available_days.map(Number) : [],
+        long_run_day: args.long_run_day == null ? null : Number(args.long_run_day),
+        max_runs_per_week: args.max_runs_per_week == null ? null : Number(args.max_runs_per_week),
+        weekly_mileage_target: args.weekly_mileage_target == null ? null : Number(args.weekly_mileage_target),
+        training_limits: args.training_limits == null ? null : String(args.training_limits),
+      });
+    case "prepare_running_week":
+      return prepareRunningWeek(supabase, userId, context.conversationId, {
+        week_start: String(args.week_start),
+        focus: String(args.focus),
+        rationale: String(args.rationale),
+        sessions: Array.isArray(args.sessions) ? args.sessions.map((item) => {
+          const session = item as Record<string, unknown>;
+          return {
+            date: String(session.date),
+            kind: String(session.kind) as RunningWeekInput["sessions"][number]["kind"],
+            distance_miles: Number(session.distance_miles),
+            effort: String(session.effort) as RunningWeekInput["sessions"][number]["effort"],
+            description: String(session.description),
+          };
+        }) : [],
+      });
+    case "confirm_running_coach_change":
+      await assertDraftBelongsToConversation(supabase, userId, context.conversationId, String(args.draft_id), "running_coach_drafts");
+      return confirmRunningCoachDraft(supabase, userId, context.conversationId, String(args.draft_id));
     case "list_saved_meals":
       return { meals: await listSavedMeals(supabase, userId) };
     case "log_saved_meal":
@@ -580,7 +693,7 @@ export async function runAssistantTool(
         activity_type: String(args.activity_type) as ActivityType,
         activity_date: String(args.activity_date),
         duration_minutes: Number(args.duration_minutes),
-        calories_burned: Number(args.calories_burned),
+        calories_burned: args.calories_burned == null ? null : Number(args.calories_burned),
         distance_miles: args.distance_miles == null ? null : Number(args.distance_miles),
         average_heart_rate: args.average_heart_rate == null ? null : Number(args.average_heart_rate),
         cadence: args.cadence == null ? null : Number(args.cadence),
