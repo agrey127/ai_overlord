@@ -53,3 +53,10 @@ test("stop command ends speech without starting dictation", () => {
   assert.equal(vm.runInContext("voiceState", context), "idle");
   assert.deepEqual(sent, ["baseline:stop-speaking"]);
 });
+
+test("a second wake phrase stops dictation for sending", () => {
+  const { context, sent } = desktopHarness();
+  vm.runInContext("bridge = { killed: false, stdin: { writable: true, write() {} } }; voiceState = 'dictating'; handleBridgeLine('{\"type\":\"wake\"}')", context);
+  assert.equal(vm.runInContext("voiceState", context), "waiting-for-paste");
+  assert.deepEqual(sent, ["baseline:dictation-stop"]);
+});

@@ -118,7 +118,7 @@ function handleBridgeLine(line) {
     return;
   }
   if (event.type === "wake" && voiceState === "idle") beginVoiceTurn();
-  if (event.type === "send" && voiceState === "dictating") {
+  if ((event.type === "send" || event.type === "wake") && voiceState === "dictating") {
     voiceState = "waiting-for-paste";
     send("baseline:dictation-stop");
     if (!bridgeCommand("TOGGLE")) return resetVoice("Could not stop Wispr dictation.");

@@ -182,6 +182,10 @@ export default function AssistantWorkspace() {
   const messagesRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLInputElement>(null);
   const waitingForWisprPasteRef = useRef(false);
+  const voiceDraftStartRef = useRef("");
+  const draftRef = useRef("");
+  const dictationSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dictationSendRef = useRef<() => void>(() => {});
   const voiceTurnRef = useRef(false);
   const voiceConversationIdRef = useRef<string | null>(null);
   const voiceFocusInProgressRef = useRef(false);
@@ -299,7 +303,7 @@ export default function AssistantWorkspace() {
       if (images.reduce((total, image) => total + image.data_url.length, 0) > 900_000) {
         throw new Error("The screenshots could not be reduced enough for a reliable upload. Try sending one or two at a time.");
       }
-      const response = await fetch("/api/assistant", { method: "POST", headers: { ...(await authHeaders()), "Content-Type": "application/json" }, body: JSON.stringify({ message: clean, conversationId, images }) });
+      const response = await fetch("/api/assistant", { method: "POST", headers: { ...(await authHeaders()), "Content-Type": "application/json" }, body: JSON.stringify({ message: clean, conversationId, images, voiceMode: fromVoice }) });
       const data = await readAssistantResponse(response);
       if (!response.ok) throw new Error(data.error ?? "The assistant could not complete that request.");
       setMessages((current) => [...current, data.message]); setWorkout(data.workout); setSelectedId(data.conversationId);
@@ -409,6 +413,7 @@ export default function AssistantWorkspace() {
             await loadContext(conversationId);
           }
           voiceConversationIdRef.current = conversationId;
+          voiceDraftStartRef.current = draftRef.current;
           composerRef.current?.focus();
           composerRef.current?.select();
           if (document.activeElement !== composerRef.current) throw new Error("Could not focus the selected voice chat.");
@@ -422,31 +427,45 @@ export default function AssistantWorkspace() {
         } finally { voiceFocusInProgressRef.current = false; }
       })();
     });
-    const stopDictation = desktop.onDictationStop(() => { waitingForWisprPasteRef.current = true; });
+    const stopDictation = desktop.onDictationStop(() => {
+      waitingForWisprPasteRef.current = true;
+      if (draftRef.current !== voiceDraftStartRef.current) dictationSendRef.current();
+    });
     const stopSpeaking = typeof desktop.onStopSpeaking === "function"
       ? desktop.onStopSpeaking(() => spokenReplyRef.current?.cancel()) : () => {};
-    const stopError = desktop.onVoiceError((message) => { waitingForWisprPasteRef.current = false; voiceConversationIdRef.current = null; setError(message); });
+    const stopError = desktop.onVoiceError((message) => {
+      waitingForWisprPasteRef.current = false;
+      if (dictationSettleTimerRef.current) clearTimeout(dictationSettleTimerRef.current);
+      voiceConversationIdRef.current = null; setError(message);
+    });
     desktop.assistantReady();
     return () => { stopFocus(); stopDictation(); stopSpeaking(); stopError(); };
   }, [signedIn, contextReady, selectedId, selectedConversation?.domain, draft, loading]);
 
+  function queueDictationSend() {
+    if (dictationSettleTimerRef.current) clearTimeout(dictationSettleTimerRef.current);
+    dictationSettleTimerRef.current = setTimeout(() => {
+      dictationSettleTimerRef.current = null;
+      if (!waitingForWisprPasteRef.current) return;
+      const dictated = draftRef.current.replace(/[\s,.;!?]*(?:send it|hello[,]? baseline)[.!?\s]*$/i, "").trim();
+      if (!dictated) return;
+      waitingForWisprPasteRef.current = false;
+      if (!voiceConversationIdRef.current) {
+        setError("The voice chat was not ready. Try again.");
+        window.baselineDesktop?.turnFailed();
+        return;
+      }
+      window.baselineDesktop?.dictationPasted();
+      voiceTurnRef.current = true;
+      void sendMessage(dictated, [], voiceConversationIdRef.current);
+    }, 900);
+  }
+  dictationSendRef.current = queueDictationSend;
+
   function onComposerChange(value: string) {
-    if (!waitingForWisprPasteRef.current) { setDraft(value); return; }
-    waitingForWisprPasteRef.current = false;
-    const dictated = value.replace(/[\s,.;!?]*send it[.!?\s]*$/i, "").trim();
-    if (!dictated) {
-      setError("Wispr did not insert a message. Try again.");
-      window.baselineDesktop?.turnFailed();
-      return;
-    }
-    if (!voiceConversationIdRef.current) {
-      setError("The voice chat was not ready. Try again.");
-      window.baselineDesktop?.turnFailed();
-      return;
-    }
-    window.baselineDesktop?.dictationPasted();
-    voiceTurnRef.current = true;
-    void sendMessage(dictated, [], voiceConversationIdRef.current);
+    setDraft(value);
+    draftRef.current = value;
+    if (waitingForWisprPasteRef.current) queueDictationSend();
   }
 
   async function finishWorkout() {
@@ -588,7 +607,7 @@ export default function AssistantWorkspace() {
         <p className={styles.privacy}>{signedIn ? "Synced privately to your account" : "Preview mode · sign in to save"}</p>
       </aside>
       <section className={styles.chatPanel} aria-label="Assistant conversation">
-        {desktopAvailable && <div className={styles.voiceRoute}><label htmlFor="voice-chat">Voice chat</label><select id="voice-chat" value={voiceTarget} onChange={(event) => void changeVoiceTarget(event.target.value as AssistantThreadDomain)}>{threadChoices.map((choice) => <option key={choice.domain} value={choice.domain}>{choice.label}</option>)}</select>{speaking ? <button type="button" onClick={() => spokenReplyRef.current?.cancel()}>Stop speaking</button> : <span>“Hello Baseline” sends here</span>}</div>}
+        {desktopAvailable && <div className={styles.voiceRoute}><label htmlFor="voice-chat">Voice chat</label><select id="voice-chat" value={voiceTarget} onChange={(event) => void changeVoiceTarget(event.target.value as AssistantThreadDomain)}>{threadChoices.map((choice) => <option key={choice.domain} value={choice.domain}>{choice.label}</option>)}</select>{speaking ? <button type="button" onClick={() => spokenReplyRef.current?.cancel()}>Stop speaking</button> : <span>Say “Hello Baseline” to start, then again to send</span>}</div>}
         {(isChiefOfStaffChat || isStrengthChat || isNutritionChat) && <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>{isChiefOfStaffChat ? "Specialist tasks" : isNutritionChat ? "Saved meals" : "Next workout"}</small>{isChiefOfStaffChat ? `${delegations.length} recent task${delegations.length === 1 ? "" : "s"}` : isNutritionChat ? `${savedMeals.length} meal${savedMeals.length === 1 ? "" : "s"}` : workout.name}</span><Icon name="chevron" /></button>}
         {contextOpen && (isChiefOfStaffChat || isStrengthChat || isNutritionChat) && (isChiefOfStaffChat ? <DelegationBoard tasks={delegations} onRetry={(id) => void retryDelegation(id)} retryingTaskId={retryingTaskId} mobile /> : isNutritionChat ? <NutritionMealsCard meals={savedMeals} conversationId={selectedId} signedIn={signedIn} onRequireAuth={() => router.push("/login")} mobile /> : <WorkoutCard workout={workout} mobile />)}
         <div ref={messagesRef} className={styles.messages} aria-live="polite">
