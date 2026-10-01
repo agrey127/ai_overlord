@@ -7,6 +7,7 @@ import {
   getMessages,
   listSavedMeals,
   listConversations,
+  saveMessage,
 } from "@/lib/assistant/repository";
 
 export const runtime = "nodejs";
@@ -25,13 +26,18 @@ export async function GET(request: Request) {
     ]);
 
     let conversations = initialConversations;
-    if (!conversations.length) {
-      await createConversation(supabase, userId, "Next workout", "strength");
+    if (!conversations.some((conversation) => conversation.domain === "chief_of_staff")) {
+      const chief = await createConversation(supabase, userId, "New Chief of Staff chat", "chief_of_staff");
+      await saveMessage(supabase, {
+        conversationId: chief.id, userId, role: "assistant",
+        content: "I can set priorities across strength, running, and nutrition and delegate focused reviews to each coach. Ask for a current brief or tell me what needs attention.",
+      });
       conversations = await listConversations(supabase, userId);
     }
 
     const selectedConversationId =
       conversations.find((conversation) => conversation.id === requestedConversationId)?.id ??
+      conversations.find((conversation) => conversation.domain === "chief_of_staff")?.id ??
       conversations[0]?.id ??
       null;
     const messages = selectedConversationId

@@ -164,8 +164,8 @@ export default function AssistantWorkspace() {
   const [delegations, setDelegations] = useState<AssistantDelegation[]>([]);
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const [conversations, setConversations] = useState(demoConversations);
-  const [messages, setMessages] = useState(demoMessages);
-  const [selectedId, setSelectedId] = useState<string | null>("demo-training");
+  const [messages, setMessages] = useState(demoMessagesByConversation["demo-chief"]);
+  const [selectedId, setSelectedId] = useState<string | null>("demo-chief");
   const [draft, setDraft] = useState("");
   const [signedIn, setSignedIn] = useState(false);
   const [newThreadOpen, setNewThreadOpen] = useState(false);
@@ -178,9 +178,13 @@ export default function AssistantWorkspace() {
   const [voiceTarget, setVoiceTarget] = useState<AssistantThreadDomain>("chief_of_staff");
   const [contextReady, setContextReady] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
+  const [keyboardViewport, setKeyboardViewport] = useState<{ height: number; top: number } | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const messagesRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLInputElement>(null);
+  const selectedConversationIdRef = useRef<string | null>(null);
+  const contextRequestIdRef = useRef(0);
+  const initialContextRequestedRef = useRef(false);
   const waitingForWisprPasteRef = useRef(false);
   const voiceDraftStartRef = useRef("");
   const draftRef = useRef("");
@@ -224,19 +228,24 @@ export default function AssistantWorkspace() {
   const mealSavedToList = saveableMealMessage?.metadata?.saved_to_meals === true;
 
   async function loadContext(conversationId?: string | null) {
+    const requestId = ++contextRequestIdRef.current;
+    const requestedId = conversationId === undefined ? selectedConversationIdRef.current : conversationId;
     const headers = await authHeaders();
-    const query = conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : "";
+    const query = requestedId ? `?conversationId=${encodeURIComponent(requestedId)}` : "";
     const response = await fetch(`/api/assistant/context${query}`, { headers });
     const data = (await response.json()) as AssistantBootstrap & { error?: string };
     if (!response.ok) throw new Error(data.error ?? "Unable to load your assistant.");
+    if (requestId !== contextRequestIdRef.current) return;
     setWorkout(data.workout); setSavedMeals(data.savedMeals); setConversations(data.conversations);
     setDelegations(data.delegations ?? []);
+    selectedConversationIdRef.current = data.selectedConversationId;
     setMessages(data.messages.filter((message) => message.role !== "tool")); setSelectedId(data.selectedConversationId);
     const selected = data.conversations.find((conversation) => conversation.id === data.selectedConversationId);
     setContextReady(true);
     if (selected?.domain === "running") {
       const coachResponse = await fetch("/api/assistant/running", { headers });
       const coachData = (await coachResponse.json()) as RunningCoachCardData & { error?: string };
+      if (requestId !== contextRequestIdRef.current) return;
       if (coachResponse.ok) setRunningCoach(coachData);
       else { setRunningCoach(null); setError(coachData.error ?? "Unable to load the Running coach."); }
     } else setRunningCoach(null);
@@ -244,15 +253,30 @@ export default function AssistantWorkspace() {
 
   useEffect(() => {
     const supabase = getBrowserSupabase(); let active = true;
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!active || !data.session) return; setSignedIn(true);
-      try { await loadContext(); } catch (e) { setError(e instanceof Error ? e.message : "Unable to load."); }
+    const loadInitialContext = () => {
+      if (initialContextRequestedRef.current) return;
+      initialContextRequestedRef.current = true;
+      void loadContext().catch((e) => {
+        initialContextRequestedRef.current = false;
+        if (active) setError(e instanceof Error ? e.message : "Unable to load.");
+      });
+    };
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!active || !data.session) return;
+      setSignedIn(true);
+      loadInitialContext();
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!active) return;
       setSignedIn(Boolean(session));
-      if (session) void loadContext();
-      else { setContextReady(false); voiceConversationIdRef.current = null; }
+      if (session) loadInitialContext();
+      else {
+        initialContextRequestedRef.current = false;
+        contextRequestIdRef.current += 1;
+        selectedConversationIdRef.current = null;
+        setContextReady(false);
+        voiceConversationIdRef.current = null;
+      }
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, []);
@@ -263,10 +287,52 @@ export default function AssistantWorkspace() {
     void desktop.getVoiceTarget().then(setVoiceTarget);
     return desktop.onVoiceTargetChanged(setVoiceTarget);
   }, []);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    let expandedHeight = viewport.height;
+    let expandedWidth = viewport.width;
+    let frame = 0;
+    const update = () => {
+      if (Math.abs(viewport.width - expandedWidth) > 40) {
+        expandedWidth = viewport.width;
+        expandedHeight = viewport.height;
+      }
+      const focused = document.activeElement === composerRef.current;
+      if (!focused) expandedHeight = Math.max(expandedHeight, viewport.height);
+      const open = focused && window.matchMedia("(max-width: 700px)").matches
+        && viewport.scale < 1.05 && expandedHeight - viewport.height > 150;
+      const height = Math.round(viewport.height);
+      const top = Math.round(viewport.offsetTop);
+      setKeyboardViewport((current) => {
+        if (!open) return current ? null : current;
+        return current?.height === height && current.top === top ? current : { height, top };
+      });
+    };
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
+    viewport.addEventListener("resize", schedule);
+    viewport.addEventListener("scroll", schedule);
+    window.addEventListener("resize", schedule);
+    document.addEventListener("focusin", schedule);
+    document.addEventListener("focusout", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener("resize", schedule);
+      viewport.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      document.removeEventListener("focusin", schedule);
+      document.removeEventListener("focusout", schedule);
+    };
+  }, []);
+  const keyboardOpen = keyboardViewport !== null;
+  useEffect(() => {
+    document.documentElement.classList.toggle("assistant-keyboard-open", keyboardOpen);
+    return () => document.documentElement.classList.remove("assistant-keyboard-open");
+  }, [keyboardOpen]);
   useLayoutEffect(() => {
     const pane = messagesRef.current;
     if (pane) pane.scrollTop = pane.scrollHeight;
-  }, [messages, loading]);
+  }, [messages, loading, keyboardViewport?.height]);
   useEffect(() => { pendingImagesRef.current = pendingImages; }, [pendingImages]);
   useEffect(() => {
     if (isRunningChat) return;
@@ -285,7 +351,7 @@ export default function AssistantWorkspace() {
     const fromVoice = voiceTurnRef.current;
     voiceTurnRef.current = false;
     if (!signedIn) { router.push("/login"); return; }
-    const conversationId = voiceConversationId ?? selectedId;
+    const conversationId = voiceConversationId ?? selectedConversationIdRef.current;
     if (!conversationId) { setError("Choose a chat before sending a message."); return; }
     if (attachedImages.length && !isRunningChat) { setError("Garmin run screenshots belong in the Running chat."); return; }
     const displayText = clean || "Import this Garmin activity from the attached screenshot.";
@@ -293,7 +359,10 @@ export default function AssistantWorkspace() {
       ? `${displayText}\n${attachedImages.length} Garmin screenshot${attachedImages.length === 1 ? "" : "s"} attached`
       : displayText;
     const optimistic: AssistantMessage = { id: `pending-${Date.now()}`, role: "user", content: optimisticContent, created_at: new Date().toISOString() };
-    setMessages((current) => [...current, optimistic]); setDraft(""); setLoading(true); setError("");
+    if (selectedConversationIdRef.current === conversationId) {
+      setMessages((current) => [...current, optimistic]);
+    }
+    setDraft(""); setLoading(true); setError("");
     try {
       const targetBytes = Math.floor(MAX_COMBINED_IMAGE_BYTES / Math.max(1, attachedImages.length));
       const images: Array<{ data_url: string }> = [];
@@ -306,14 +375,17 @@ export default function AssistantWorkspace() {
       const response = await fetch("/api/assistant", { method: "POST", headers: { ...(await authHeaders()), "Content-Type": "application/json" }, body: JSON.stringify({ message: clean, conversationId, images, voiceMode: fromVoice }) });
       const data = await readAssistantResponse(response);
       if (!response.ok) throw new Error(data.error ?? "The assistant could not complete that request.");
-      setMessages((current) => [...current, data.message]); setWorkout(data.workout); setSelectedId(data.conversationId);
+      if (selectedConversationIdRef.current === conversationId) {
+        setMessages((current) => [...current, data.message]);
+      }
+      setWorkout(data.workout);
       if (fromVoice && window.baselineDesktop) void speakAssistantReply(data.message, data.conversationId);
       if (attachedImages.length) {
         attachedImages.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
         setPendingImages([]);
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
-      await loadContext(data.conversationId);
+      if (selectedConversationIdRef.current) await loadContext(selectedConversationIdRef.current);
     } catch (e) {
       setMessages((current) => current.filter((message) => message.id !== optimistic.id)); setError(e instanceof Error ? e.message : "Something went wrong.");
       if (fromVoice) window.baselineDesktop?.turnFailed();
@@ -558,7 +630,13 @@ export default function AssistantWorkspace() {
   }
 
   function selectConversation(conversation: AssistantConversation) {
-    if (signedIn) { void loadContext(conversation.id); return; }
+    selectedConversationIdRef.current = conversation.id;
+    if (signedIn) {
+      setSelectedId(conversation.id);
+      setMessages([]);
+      void loadContext(conversation.id);
+      return;
+    }
     setSelectedId(conversation.id);
     setMessages(demoMessagesByConversation[conversation.id] ?? demoMessages);
   }
@@ -583,15 +661,17 @@ export default function AssistantWorkspace() {
       });
       const data = (await response.json()) as AssistantConversationCreateResponse & { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Unable to create the conversation.");
+      selectedConversationIdRef.current = data.conversation.id;
       setConversations((current) => [data.conversation, ...current.filter((item) => item.id !== data.conversation.id)]);
       setSelectedId(data.conversation.id); setMessages(data.messages); setNewThreadOpen(false); setContextOpen(false);
-      if (domain === "running") await loadContext(data.conversation.id);
+      await loadContext(data.conversation.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to create the conversation.");
     } finally { setCreatingThread(false); }
   }
 
-  return <main className={styles.shell}>
+  return <main className={`${styles.shell} ${keyboardOpen ? styles.keyboardOpen : ""}`}
+    style={keyboardViewport ? { top: keyboardViewport.top, height: keyboardViewport.height } : undefined}>
     <header className={styles.header}>
       <div><p className={styles.brand}>Baseline</p><p className={styles.date}>{dateLabel}</p></div>
       <div className={styles.headerTitle}><span className={styles.mark}><Icon name="spark" /></span><span className={styles.headerChatName}>{activeChatLabel}</span></div>
@@ -626,6 +706,7 @@ export default function AssistantWorkspace() {
         </div> : null}
         {error && <p className={styles.error} role="alert">{error}</p>}
         <div className={styles.composerArea}>
+          {keyboardOpen && <span className={styles.keyboardChatLabel}>{activeChatLabel} chat</span>}
           {pendingImages.length ? <div className={styles.attachmentTray} aria-label="Attached Garmin screenshots">{pendingImages.map((image) => <figure key={image.id} className={styles.attachment}><Image src={image.previewUrl} alt="Garmin screenshot preview" width={58} height={58} unoptimized /><button type="button" onClick={() => removeImage(image.id)} aria-label={`Remove ${image.file.name}`}>×</button></figure>)}</div> : null}
           <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); void sendMessage(draft, pendingImages); }}>
             {isRunningChat ? <><input ref={fileInputRef} className={styles.fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => { addImages(event.target.files); event.target.value = ""; }} />

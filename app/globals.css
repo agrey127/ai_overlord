@@ -151,6 +151,10 @@ body {
   pointer-events: none; /* only the nav itself receives clicks */
 }
 
+@media (max-width: 700px) {
+  html.assistant-keyboard-open .bottom-nav-wrap { display: none; }
+}
+
 .bottom-nav {
   pointer-events: auto;
   max-width: 980px;
