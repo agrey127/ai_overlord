@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
@@ -174,7 +174,7 @@ export default function AssistantWorkspace() {
   const [error, setError] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
-  const endRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLInputElement>(null);
   const waitingForWisprPasteRef = useRef(false);
   const voiceTurnRef = useRef(false);
@@ -240,7 +240,10 @@ export default function AssistantWorkspace() {
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, []);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+  useLayoutEffect(() => {
+    const pane = messagesRef.current;
+    if (pane) pane.scrollTop = pane.scrollHeight;
+  }, [messages, loading]);
   useEffect(() => { pendingImagesRef.current = pendingImages; }, [pendingImages]);
   useEffect(() => {
     if (isRunningChat) return;
@@ -442,10 +445,12 @@ export default function AssistantWorkspace() {
   }
 
   function newConversation() {
+    composerRef.current?.blur();
     setNewThreadOpen(true);
   }
 
   function selectDomain(domain: AssistantThreadDomain) {
+    composerRef.current?.blur();
     const conversation = conversationsByDomain.get(domain);
     if (conversation) {
       setNewThreadOpen(false);
@@ -500,9 +505,9 @@ export default function AssistantWorkspace() {
       <section className={styles.chatPanel} aria-label="Assistant conversation">
         {(isChiefOfStaffChat || isStrengthChat || isNutritionChat) && <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>{isChiefOfStaffChat ? "Specialist tasks" : isNutritionChat ? "Saved meals" : "Next workout"}</small>{isChiefOfStaffChat ? `${delegations.length} recent task${delegations.length === 1 ? "" : "s"}` : isNutritionChat ? `${savedMeals.length} meal${savedMeals.length === 1 ? "" : "s"}` : workout.name}</span><Icon name="chevron" /></button>}
         {contextOpen && (isChiefOfStaffChat || isStrengthChat || isNutritionChat) && (isChiefOfStaffChat ? <DelegationBoard tasks={delegations} onRetry={(id) => void retryDelegation(id)} retryingTaskId={retryingTaskId} mobile /> : isNutritionChat ? <NutritionMealsCard meals={savedMeals} conversationId={selectedId} signedIn={signedIn} onRequireAuth={() => router.push("/login")} mobile /> : <WorkoutCard workout={workout} mobile />)}
-        <div className={styles.messages} aria-live="polite">
+        <div ref={messagesRef} className={styles.messages} aria-live="polite">
           {messages.map((message) => message.role !== "tool" && <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.assistantMessage}>{message.role === "assistant" && <span className={styles.avatar}><Icon name="spark" /></span>}<div><span className={styles.speaker}>{message.role === "user" ? "You" : "Baseline"}</span><p>{message.content}</p></div></article>)}
-          {loading && <article className={styles.assistantMessage}><span className={styles.avatar}><Icon name="spark" /></span><div><span className={styles.speaker}>Baseline</span><p className={styles.thinking}>Working through that…</p></div></article>}<div ref={endRef} />
+          {loading && <article className={styles.assistantMessage}><span className={styles.avatar}><Icon name="spark" /></span><div><span className={styles.speaker}>Baseline</span><p className={styles.thinking}>Working through that…</p></div></article>}
         </div>
         {isStrengthChat || isRunningChat || confirmationRequired || saveableMealMessage ? <div className={styles.quickActions}>
           {confirmationRequired ? <button disabled={loading} onClick={() => void sendMessage(CONFIRMATION_REPLY)}>Confirm</button> : null}
