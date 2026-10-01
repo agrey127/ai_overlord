@@ -10,9 +10,11 @@ function listen(channel, callback) {
 contextBridge.exposeInMainWorld("baselineDesktop", {
   isDesktop: true,
   onFocusComposer: (callback) => listen("baseline:focus-composer", callback),
+  onVoiceTargetChanged: (callback) => listen("baseline:voice-target-changed", callback),
   onDictationStop: (callback) => listen("baseline:dictation-stop", callback),
   onVoiceError: (callback) => listen("baseline:voice-error", callback),
   composerReady: () => ipcRenderer.send("baseline:composer-ready"),
+  focusFailed: (message) => ipcRenderer.send("baseline:focus-failed", message),
   assistantReady: () => ipcRenderer.send("baseline:assistant-ready"),
   dictationPasted: () => ipcRenderer.send("baseline:dictation-pasted"),
   replyStarted: () => ipcRenderer.send("baseline:reply-started"),
@@ -20,4 +22,6 @@ contextBridge.exposeInMainWorld("baselineDesktop", {
   turnFailed: () => ipcRenderer.send("baseline:turn-failed"),
   setServerUrl: (url) => ipcRenderer.invoke("baseline:set-server-url", url),
   getServerUrl: () => ipcRenderer.invoke("baseline:get-server-url"),
+  getVoiceTarget: () => ipcRenderer.invoke("baseline:get-voice-target"),
+  setVoiceTarget: (domain) => ipcRenderer.invoke("baseline:set-voice-target", domain),
 });

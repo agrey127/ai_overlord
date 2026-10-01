@@ -8,7 +8,14 @@ const ASSISTANT_PATH = "/baseline/assistant";
 const AUTH_PROTOCOL = "baseline-desktop:";
 const OPEN_SHORTCUT = "Control+Alt+B";
 const CONFIG_NAME = "desktop-settings.json";
-const DEFAULT_SETTINGS = { serverUrl: "", wakeEnabled: true, launchAtLogin: true };
+const VOICE_CHATS = [
+  { domain: "chief_of_staff", label: "Chief of Staff" },
+  { domain: "general", label: "General" },
+  { domain: "strength", label: "Strength" },
+  { domain: "running", label: "Running" },
+  { domain: "nutrition", label: "Nutrition" },
+];
+const DEFAULT_SETTINGS = { serverUrl: "", wakeEnabled: true, launchAtLogin: true, voiceTarget: "chief_of_staff" };
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 let window;
@@ -27,6 +34,7 @@ function configPath() { return path.join(app.getPath("userData"), CONFIG_NAME); 
 function loadSettings() {
   try { settings = { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(configPath(), "utf8")) }; }
   catch { settings = { ...DEFAULT_SETTINGS }; }
+  if (!VOICE_CHATS.some((chat) => chat.domain === settings.voiceTarget)) settings.voiceTarget = DEFAULT_SETTINGS.voiceTarget;
 }
 
 function saveSettings() {
@@ -74,7 +82,7 @@ function bridgeCommand(command) {
 }
 
 function focusComposer() {
-  if (voiceState === "focusing") send("baseline:focus-composer");
+  if (voiceState === "focusing") send("baseline:focus-composer", settings.voiceTarget);
 }
 
 function beginVoiceTurn() {
@@ -229,6 +237,10 @@ function updateTray() {
     { label: "Open Baseline", click: showAssistant },
     { label: "Sign in with copied link (fallback)", click: useCopiedSignInLink },
     { type: "separator" },
+    { label: "Voice chat", submenu: VOICE_CHATS.map((chat) => ({
+      label: chat.label, type: "radio", checked: settings.voiceTarget === chat.domain, enabled: voiceState === "idle",
+      click: () => setVoiceTarget(chat.domain),
+    })) },
     { label: "Wake word: Hello Baseline", type: "checkbox", checked: settings.wakeEnabled, click: (item) => {
       settings.wakeEnabled = item.checked;
       saveSettings();
@@ -250,7 +262,18 @@ function updateTray() {
     { label: "Quit Baseline", click: () => { quitting = true; app.quit(); } },
   ]);
   tray.setContextMenu(menu);
-  tray.setToolTip(settings.wakeEnabled ? `Baseline · ${voiceState}` : "Baseline · wake word off");
+  const chatLabel = VOICE_CHATS.find((chat) => chat.domain === settings.voiceTarget)?.label ?? "Chief of Staff";
+  tray.setToolTip(settings.wakeEnabled ? `Baseline · ${chatLabel} · ${voiceState}` : "Baseline · wake word off");
+}
+
+function setVoiceTarget(domain) {
+  if (!VOICE_CHATS.some((chat) => chat.domain === domain)) return { ok: false, error: "Choose a Baseline chat." };
+  if (voiceState !== "idle") return { ok: false, error: "Finish the current voice turn before switching chats." };
+  settings.voiceTarget = domain;
+  saveSettings();
+  send("baseline:voice-target-changed", domain);
+  updateTray();
+  return { ok: true };
 }
 
 function createWindow() {
@@ -310,6 +333,13 @@ app.whenReady().then(() => {
 });
 
 ipcMain.handle("baseline:get-server-url", () => settings.serverUrl);
+ipcMain.handle("baseline:get-voice-target", () => settings.voiceTarget);
+ipcMain.handle("baseline:set-voice-target", (event, domain) => {
+  if (!window || event.sender !== window.webContents || event.sender.getURL().startsWith("file:")) {
+    return { ok: false, error: "Open a signed-in Baseline chat to change the voice target." };
+  }
+  return setVoiceTarget(domain);
+});
 ipcMain.handle("baseline:set-server-url", (_event, value) => {
   try {
     if (!window || _event.sender !== window.webContents || !_event.sender.getURL().startsWith("file:")) {
@@ -321,12 +351,18 @@ ipcMain.handle("baseline:set-server-url", (_event, value) => {
   } catch (error) { return { ok: false, error: error.message }; }
 });
 ipcMain.on("baseline:assistant-ready", focusComposer);
-ipcMain.on("baseline:composer-ready", () => {
+ipcMain.on("baseline:composer-ready", (event) => {
+  if (!window || event.sender !== window.webContents) return;
   if (voiceState !== "focusing") return;
   clearInterval(focusTimer);
   voiceState = "dictating";
   if (!bridgeCommand("ACK_AND_TOGGLE")) resetVoice("Could not start Wispr dictation.");
   updateTray();
+});
+ipcMain.on("baseline:focus-failed", (event, message) => {
+  if (window && event.sender === window.webContents && voiceState === "focusing") {
+    resetVoice(typeof message === "string" ? message.slice(0, 240) : "Could not open the selected voice chat.");
+  }
 });
 ipcMain.on("baseline:dictation-pasted", () => {
   if (voiceState === "waiting-for-paste") { clearTimeout(pasteTimer); voiceState = "thinking"; updateTray(); }

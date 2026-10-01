@@ -172,12 +172,17 @@ export default function AssistantWorkspace() {
   const [loading, setLoading] = useState(false);
   const [savingMealMessageId, setSavingMealMessageId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [desktopAvailable, setDesktopAvailable] = useState(false);
+  const [voiceTarget, setVoiceTarget] = useState<AssistantThreadDomain>("chief_of_staff");
+  const [contextReady, setContextReady] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const messagesRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLInputElement>(null);
   const waitingForWisprPasteRef = useRef(false);
   const voiceTurnRef = useRef(false);
+  const voiceConversationIdRef = useRef<string | null>(null);
+  const voiceFocusInProgressRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingImagesRef = useRef<PendingImage[]>([]);
   const dateLabel = useMemo(() => new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date()), []);
@@ -221,6 +226,7 @@ export default function AssistantWorkspace() {
     setDelegations(data.delegations ?? []);
     setMessages(data.messages.filter((message) => message.role !== "tool")); setSelectedId(data.selectedConversationId);
     const selected = data.conversations.find((conversation) => conversation.id === data.selectedConversationId);
+    setContextReady(true);
     if (selected?.domain === "running") {
       const coachResponse = await fetch("/api/assistant/running", { headers });
       const coachData = (await coachResponse.json()) as RunningCoachCardData & { error?: string };
@@ -236,9 +242,19 @@ export default function AssistantWorkspace() {
       try { await loadContext(); } catch (e) { setError(e instanceof Error ? e.message : "Unable to load."); }
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!active) return; setSignedIn(Boolean(session)); if (session) void loadContext();
+      if (!active) return;
+      setSignedIn(Boolean(session));
+      if (session) void loadContext();
+      else { setContextReady(false); voiceConversationIdRef.current = null; }
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
+  }, []);
+  useEffect(() => {
+    const desktop = window.baselineDesktop;
+    if (!desktop || typeof desktop.getVoiceTarget !== "function") return;
+    setDesktopAvailable(true);
+    void desktop.getVoiceTarget().then(setVoiceTarget);
+    return desktop.onVoiceTargetChanged(setVoiceTarget);
   }, []);
   useLayoutEffect(() => {
     const pane = messagesRef.current;
@@ -257,12 +273,13 @@ export default function AssistantWorkspace() {
     pendingImagesRef.current.forEach(({ previewUrl }) => URL.revokeObjectURL(previewUrl));
   }, []);
 
-  async function sendMessage(text: string, attachedImages: PendingImage[] = []) {
+  async function sendMessage(text: string, attachedImages: PendingImage[] = [], voiceConversationId?: string) {
     const clean = text.trim(); if ((!clean && !attachedImages.length) || loading) return;
     const fromVoice = voiceTurnRef.current;
     voiceTurnRef.current = false;
     if (!signedIn) { router.push("/login"); return; }
-    if (!selectedId) { setError("Choose a chat before sending a message."); return; }
+    const conversationId = voiceConversationId ?? selectedId;
+    if (!conversationId) { setError("Choose a chat before sending a message."); return; }
     if (attachedImages.length && !isRunningChat) { setError("Garmin run screenshots belong in the Running chat."); return; }
     const displayText = clean || "Import this Garmin activity from the attached screenshot.";
     const optimisticContent = attachedImages.length
@@ -279,7 +296,7 @@ export default function AssistantWorkspace() {
       if (images.reduce((total, image) => total + image.data_url.length, 0) > 900_000) {
         throw new Error("The screenshots could not be reduced enough for a reliable upload. Try sending one or two at a time.");
       }
-      const response = await fetch("/api/assistant", { method: "POST", headers: { ...(await authHeaders()), "Content-Type": "application/json" }, body: JSON.stringify({ message: clean, conversationId: selectedId, images }) });
+      const response = await fetch("/api/assistant", { method: "POST", headers: { ...(await authHeaders()), "Content-Type": "application/json" }, body: JSON.stringify({ message: clean, conversationId, images }) });
       const data = await readAssistantResponse(response);
       if (!response.ok) throw new Error(data.error ?? "The assistant could not complete that request.");
       setMessages((current) => [...current, data.message]); setWorkout(data.workout); setSelectedId(data.conversationId);
@@ -293,7 +310,7 @@ export default function AssistantWorkspace() {
     } catch (e) {
       setMessages((current) => current.filter((message) => message.id !== optimistic.id)); setError(e instanceof Error ? e.message : "Something went wrong.");
       if (fromVoice) window.baselineDesktop?.turnFailed();
-    } finally { setLoading(false); }
+    } finally { setLoading(false); if (fromVoice) voiceConversationIdRef.current = null; }
   }
 
   async function retryDelegation(taskId: string) {
@@ -346,17 +363,46 @@ export default function AssistantWorkspace() {
   useEffect(() => {
     const desktop = window.baselineDesktop;
     if (!desktop) return;
-    const stopFocus = desktop.onFocusComposer(() => {
-      if (!signedIn || !selectedId || selectedId.startsWith("demo-") || loading) return;
-      composerRef.current?.focus();
-      composerRef.current?.select();
-      if (document.activeElement === composerRef.current) desktop.composerReady();
+    const stopFocus = desktop.onFocusComposer((domain) => {
+      if (!signedIn || !contextReady || loading || voiceFocusInProgressRef.current) return;
+      const targetDomain = threadChoices.some((choice) => choice.domain === domain) ? domain : "chief_of_staff";
+      voiceFocusInProgressRef.current = true;
+      void (async () => {
+        try {
+          if (draft.trim() && selectedConversation?.domain !== targetDomain) {
+            throw new Error("Finish or clear the draft in the open chat before starting voice in another chat.");
+          }
+          let conversationId = selectedConversation?.domain === targetDomain && selectedId && !selectedId.startsWith("demo-") ? selectedId : null;
+          if (!conversationId) {
+            const response = await fetch("/api/assistant/conversations", {
+              method: "POST",
+              headers: { ...(await authHeaders()), "Content-Type": "application/json" },
+              body: JSON.stringify({ domain: targetDomain }),
+            });
+            const data = (await response.json()) as AssistantConversationCreateResponse & { error?: string };
+            if (!response.ok || !data.conversation) throw new Error(data.error ?? "Could not open the selected voice chat.");
+            conversationId = data.conversation.id;
+            await loadContext(conversationId);
+          }
+          voiceConversationIdRef.current = conversationId;
+          composerRef.current?.focus();
+          composerRef.current?.select();
+          if (document.activeElement !== composerRef.current) throw new Error("Could not focus the selected voice chat.");
+          desktop.composerReady();
+        } catch (error) {
+          voiceConversationIdRef.current = null;
+          const message = error instanceof Error ? error.message : "Could not open the selected voice chat.";
+          setError(message);
+          if (typeof desktop.focusFailed === "function") desktop.focusFailed(message);
+          else desktop.turnFailed();
+        } finally { voiceFocusInProgressRef.current = false; }
+      })();
     });
     const stopDictation = desktop.onDictationStop(() => { waitingForWisprPasteRef.current = true; });
-    const stopError = desktop.onVoiceError((message) => { waitingForWisprPasteRef.current = false; setError(message); });
+    const stopError = desktop.onVoiceError((message) => { waitingForWisprPasteRef.current = false; voiceConversationIdRef.current = null; setError(message); });
     desktop.assistantReady();
     return () => { stopFocus(); stopDictation(); stopError(); };
-  }, [signedIn, selectedId, loading]);
+  }, [signedIn, contextReady, selectedId, selectedConversation?.domain, draft, loading]);
 
   function onComposerChange(value: string) {
     if (!waitingForWisprPasteRef.current) { setDraft(value); return; }
@@ -367,9 +413,14 @@ export default function AssistantWorkspace() {
       window.baselineDesktop?.turnFailed();
       return;
     }
+    if (!voiceConversationIdRef.current) {
+      setError("The voice chat was not ready. Try again.");
+      window.baselineDesktop?.turnFailed();
+      return;
+    }
     window.baselineDesktop?.dictationPasted();
     voiceTurnRef.current = true;
-    void sendMessage(dictated);
+    void sendMessage(dictated, [], voiceConversationIdRef.current);
   }
 
   async function finishWorkout() {
@@ -467,6 +518,14 @@ export default function AssistantWorkspace() {
     setMessages(demoMessagesByConversation[conversation.id] ?? demoMessages);
   }
 
+  async function changeVoiceTarget(domain: AssistantThreadDomain) {
+    const desktop = window.baselineDesktop;
+    if (!desktop) return;
+    const result = await desktop.setVoiceTarget(domain);
+    if (result.ok) { setVoiceTarget(domain); setError(""); }
+    else setError(result.error ?? "Could not change the voice chat.");
+  }
+
   async function createThread(domain: AssistantThreadDomain) {
     if (!signedIn) { setNewThreadOpen(false); router.push("/login"); return; }
     if (creatingThread) return;
@@ -503,6 +562,7 @@ export default function AssistantWorkspace() {
         <p className={styles.privacy}>{signedIn ? "Synced privately to your account" : "Preview mode · sign in to save"}</p>
       </aside>
       <section className={styles.chatPanel} aria-label="Assistant conversation">
+        {desktopAvailable && <div className={styles.voiceRoute}><label htmlFor="voice-chat">Voice chat</label><select id="voice-chat" value={voiceTarget} onChange={(event) => void changeVoiceTarget(event.target.value as AssistantThreadDomain)}>{threadChoices.map((choice) => <option key={choice.domain} value={choice.domain}>{choice.label}</option>)}</select><span>“Hello Baseline” sends here</span></div>}
         {(isChiefOfStaffChat || isStrengthChat || isNutritionChat) && <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>{isChiefOfStaffChat ? "Specialist tasks" : isNutritionChat ? "Saved meals" : "Next workout"}</small>{isChiefOfStaffChat ? `${delegations.length} recent task${delegations.length === 1 ? "" : "s"}` : isNutritionChat ? `${savedMeals.length} meal${savedMeals.length === 1 ? "" : "s"}` : workout.name}</span><Icon name="chevron" /></button>}
         {contextOpen && (isChiefOfStaffChat || isStrengthChat || isNutritionChat) && (isChiefOfStaffChat ? <DelegationBoard tasks={delegations} onRetry={(id) => void retryDelegation(id)} retryingTaskId={retryingTaskId} mobile /> : isNutritionChat ? <NutritionMealsCard meals={savedMeals} conversationId={selectedId} signedIn={signedIn} onRequireAuth={() => router.push("/login")} mobile /> : <WorkoutCard workout={workout} mobile />)}
         <div ref={messagesRef} className={styles.messages} aria-live="polite">
