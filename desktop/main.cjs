@@ -106,6 +106,17 @@ function handleBridgeLine(line) {
     return;
   }
   if (!settings.wakeEnabled) return;
+  if (event.type === "wake" && voiceState === "speaking") {
+    send("baseline:stop-speaking");
+    resetVoice();
+    beginVoiceTurn();
+    return;
+  }
+  if (event.type === "stop" && voiceState === "speaking") {
+    send("baseline:stop-speaking");
+    resetVoice();
+    return;
+  }
   if (event.type === "wake" && voiceState === "idle") beginVoiceTurn();
   if (event.type === "send" && voiceState === "dictating") {
     voiceState = "waiting-for-paste";
@@ -255,6 +266,10 @@ function updateTray() {
     { label: "Start with Windows", type: "checkbox", checked: settings.launchAtLogin, click: (item) => {
       settings.launchAtLogin = item.checked; app.setLoginItemSettings({ openAtLogin: item.checked }); saveSettings(); updateTray();
     } },
+    { label: "Stop speaking", enabled: voiceState === "speaking", click: () => {
+      send("baseline:stop-speaking");
+      resetVoice();
+    } },
     { label: `Voice status: ${voiceState}`, enabled: false },
     { label: `Open shortcut: ${OPEN_SHORTCUT}`, enabled: false },
     { type: "separator" },
@@ -370,7 +385,7 @@ ipcMain.on("baseline:dictation-pasted", () => {
 ipcMain.on("baseline:reply-started", () => {
   if (voiceState === "thinking") { voiceState = "speaking"; updateTray(); }
 });
-ipcMain.on("baseline:reply-finished", () => resetVoice());
+ipcMain.on("baseline:reply-finished", () => { if (voiceState === "speaking") resetVoice(); });
 ipcMain.on("baseline:turn-failed", () => resetVoice());
 app.on("before-quit", () => { quitting = true; stopWakeBridge(); });
 app.on("will-quit", () => globalShortcut.unregisterAll());

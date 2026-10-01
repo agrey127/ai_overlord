@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     const speech = await client.audio.speech.create({
       model: "gpt-4o-mini-tts",
       voice: "alloy",
+      instructions: "Speak naturally, like a calm and attentive conversation. Use a warm tone and an unhurried pace. Do not sound like a formal report.",
       input: spokenText,
       response_format: "mp3",
     });

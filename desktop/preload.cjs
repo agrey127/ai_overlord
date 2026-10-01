@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("baselineDesktop", {
   isDesktop: true,
   onFocusComposer: (callback) => listen("baseline:focus-composer", callback),
   onVoiceTargetChanged: (callback) => listen("baseline:voice-target-changed", callback),
+  onStopSpeaking: (callback) => listen("baseline:stop-speaking", callback),
   onDictationStop: (callback) => listen("baseline:dictation-stop", callback),
   onVoiceError: (callback) => listen("baseline:voice-error", callback),
   composerReady: () => ipcRenderer.send("baseline:composer-ready"),

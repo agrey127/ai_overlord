@@ -2,6 +2,7 @@ interface BaselineDesktopBridge {
   isDesktop: true;
   onFocusComposer(callback: (domain: "chief_of_staff" | "general" | "strength" | "running" | "nutrition") => void): () => void;
   onVoiceTargetChanged(callback: (domain: "chief_of_staff" | "general" | "strength" | "running" | "nutrition") => void): () => void;
+  onStopSpeaking(callback: () => void): () => void;
   onDictationStop(callback: () => void): () => void;
   onVoiceError(callback: (message: string) => void): () => void;
   composerReady(): void;

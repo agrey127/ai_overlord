@@ -51,7 +51,7 @@ public static class BaselineWakeBridge {
     public static void Run() {
         try {
             recognizer = new SpeechRecognitionEngine(new CultureInfo("en-US"));
-            Choices phrases = new Choices(new string[] { "hello baseline", "send it", "cancel baseline" });
+            Choices phrases = new Choices(new string[] { "hello baseline", "send it", "cancel baseline", "stop baseline" });
             GrammarBuilder grammar = new GrammarBuilder(phrases);
             grammar.Culture = new CultureInfo("en-US");
             recognizer.LoadGrammar(new Grammar(grammar));
@@ -61,6 +61,7 @@ public static class BaselineWakeBridge {
                 if (phrase == "hello baseline") Emit("wake");
                 else if (phrase == "send it") Emit("send");
                 else if (phrase == "cancel baseline") Emit("cancel");
+                else if (phrase == "stop baseline") Emit("stop");
             };
             recognizer.SetInputToDefaultAudioDevice();
             recognizer.RecognizeAsync(RecognizeMode.Multiple);

@@ -77,6 +77,7 @@ function Icon({ name }: { name: "plus" | "send" | "spark" | "chevron" | "papercl
 }
 
 type PendingImage = { id: string; file: File; previewUrl: string };
+type SpokenReplyPlayback = { cancel: () => void };
 type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 
 const MAX_COMBINED_IMAGE_BYTES = 640 * 1024;
@@ -173,6 +174,7 @@ export default function AssistantWorkspace() {
   const [savingMealMessageId, setSavingMealMessageId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [desktopAvailable, setDesktopAvailable] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const [voiceTarget, setVoiceTarget] = useState<AssistantThreadDomain>("chief_of_staff");
   const [contextReady, setContextReady] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
@@ -183,6 +185,7 @@ export default function AssistantWorkspace() {
   const voiceTurnRef = useRef(false);
   const voiceConversationIdRef = useRef<string | null>(null);
   const voiceFocusInProgressRef = useRef(false);
+  const spokenReplyRef = useRef<SpokenReplyPlayback | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingImagesRef = useRef<PendingImage[]>([]);
   const dateLabel = useMemo(() => new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date()), []);
@@ -333,6 +336,19 @@ export default function AssistantWorkspace() {
   async function speakAssistantReply(message: AssistantMessage, conversationId: string) {
     const desktop = window.baselineDesktop;
     if (!desktop) return;
+    const controller = new AbortController();
+    let audio: HTMLAudioElement | null = null;
+    let finishAudio: (() => void) | null = null;
+    let interrupted = false;
+    const playback: SpokenReplyPlayback = { cancel: () => {
+      if (interrupted) return;
+      interrupted = true;
+      controller.abort();
+      if (audio) { audio.pause(); try { audio.currentTime = 0; } catch { /* audio may not have loaded */ } }
+      finishAudio?.();
+    } };
+    spokenReplyRef.current = playback;
+    setSpeaking(true);
     desktop.replyStarted();
     let audioUrl: string | null = null;
     try {
@@ -340,22 +356,30 @@ export default function AssistantWorkspace() {
         method: "POST",
         headers: { ...(await authHeaders()), "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId, messageId: message.id }),
+        signal: controller.signal,
       });
+      if (interrupted) return;
       if (!response.ok) {
         const data = (await response.json()) as { error?: string };
         throw new Error(data.error ?? "Baseline could not speak this reply.");
       }
       audioUrl = URL.createObjectURL(await response.blob());
-      const audio = new Audio(audioUrl);
+      if (interrupted) return;
+      const replyAudio = new Audio(audioUrl);
+      audio = replyAudio;
       await new Promise<void>((resolve, reject) => {
-        audio.onended = () => resolve();
-        audio.onerror = () => reject(new Error("Baseline could not play this reply."));
-        void audio.play().catch(reject);
+        finishAudio = resolve;
+        replyAudio.onended = () => resolve();
+        replyAudio.onerror = () => reject(new Error("Baseline could not play this reply."));
+        void replyAudio.play().catch(reject);
       });
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Baseline could not speak this reply.");
+      if (!interrupted) setError(error instanceof Error ? error.message : "Baseline could not speak this reply.");
     } finally {
+      if (audio) { audio.onended = null; audio.onerror = null; }
       if (audioUrl) URL.revokeObjectURL(audioUrl);
+      if (spokenReplyRef.current === playback) spokenReplyRef.current = null;
+      setSpeaking(false);
       desktop.replyFinished();
     }
   }
@@ -399,9 +423,11 @@ export default function AssistantWorkspace() {
       })();
     });
     const stopDictation = desktop.onDictationStop(() => { waitingForWisprPasteRef.current = true; });
+    const stopSpeaking = typeof desktop.onStopSpeaking === "function"
+      ? desktop.onStopSpeaking(() => spokenReplyRef.current?.cancel()) : () => {};
     const stopError = desktop.onVoiceError((message) => { waitingForWisprPasteRef.current = false; voiceConversationIdRef.current = null; setError(message); });
     desktop.assistantReady();
-    return () => { stopFocus(); stopDictation(); stopError(); };
+    return () => { stopFocus(); stopDictation(); stopSpeaking(); stopError(); };
   }, [signedIn, contextReady, selectedId, selectedConversation?.domain, draft, loading]);
 
   function onComposerChange(value: string) {
@@ -562,7 +588,7 @@ export default function AssistantWorkspace() {
         <p className={styles.privacy}>{signedIn ? "Synced privately to your account" : "Preview mode · sign in to save"}</p>
       </aside>
       <section className={styles.chatPanel} aria-label="Assistant conversation">
-        {desktopAvailable && <div className={styles.voiceRoute}><label htmlFor="voice-chat">Voice chat</label><select id="voice-chat" value={voiceTarget} onChange={(event) => void changeVoiceTarget(event.target.value as AssistantThreadDomain)}>{threadChoices.map((choice) => <option key={choice.domain} value={choice.domain}>{choice.label}</option>)}</select><span>“Hello Baseline” sends here</span></div>}
+        {desktopAvailable && <div className={styles.voiceRoute}><label htmlFor="voice-chat">Voice chat</label><select id="voice-chat" value={voiceTarget} onChange={(event) => void changeVoiceTarget(event.target.value as AssistantThreadDomain)}>{threadChoices.map((choice) => <option key={choice.domain} value={choice.domain}>{choice.label}</option>)}</select>{speaking ? <button type="button" onClick={() => spokenReplyRef.current?.cancel()}>Stop speaking</button> : <span>“Hello Baseline” sends here</span>}</div>}
         {(isChiefOfStaffChat || isStrengthChat || isNutritionChat) && <button className={styles.mobileContext} onClick={() => setContextOpen((value) => !value)} aria-expanded={contextOpen}><span><small>{isChiefOfStaffChat ? "Specialist tasks" : isNutritionChat ? "Saved meals" : "Next workout"}</small>{isChiefOfStaffChat ? `${delegations.length} recent task${delegations.length === 1 ? "" : "s"}` : isNutritionChat ? `${savedMeals.length} meal${savedMeals.length === 1 ? "" : "s"}` : workout.name}</span><Icon name="chevron" /></button>}
         {contextOpen && (isChiefOfStaffChat || isStrengthChat || isNutritionChat) && (isChiefOfStaffChat ? <DelegationBoard tasks={delegations} onRetry={(id) => void retryDelegation(id)} retryingTaskId={retryingTaskId} mobile /> : isNutritionChat ? <NutritionMealsCard meals={savedMeals} conversationId={selectedId} signedIn={signedIn} onRequireAuth={() => router.push("/login")} mobile /> : <WorkoutCard workout={workout} mobile />)}
         <div ref={messagesRef} className={styles.messages} aria-live="polite">
