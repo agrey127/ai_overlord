@@ -56,12 +56,21 @@ public static class BaselineWakeBridge {
             grammar.Culture = new CultureInfo("en-US");
             recognizer.LoadGrammar(new Grammar(grammar));
             recognizer.SpeechRecognized += delegate(object sender, SpeechRecognizedEventArgs args) {
-                if (args.Result.Confidence < 0.68f) return;
+                // Electron applies the selected wake sensitivity and the existing
+                // command threshold. Keep this floor below the relaxed setting.
+                if (args.Result.Confidence < 0.60f) return;
                 string phrase = args.Result.Text.ToLowerInvariant();
-                if (phrase == "hello baseline") Emit("wake");
-                else if (phrase == "send it") Emit("send");
-                else if (phrase == "cancel baseline") Emit("cancel");
-                else if (phrase == "stop baseline") Emit("stop");
+                string type = phrase == "hello baseline" ? "wake"
+                    : phrase == "send it" ? "send"
+                    : phrase == "cancel baseline" ? "cancel"
+                    : phrase == "stop baseline" ? "stop" : null;
+                if (type != null) {
+                    lock (outputLock) {
+                        Console.WriteLine("{\"type\":\"" + type + "\",\"confidence\":"
+                            + args.Result.Confidence.ToString("R", CultureInfo.InvariantCulture) + "}");
+                        Console.Out.Flush();
+                    }
+                }
             };
             recognizer.SetInputToDefaultAudioDevice();
             recognizer.RecognizeAsync(RecognizeMode.Multiple);

@@ -8,6 +8,10 @@ const ASSISTANT_PATH = "/baseline/assistant";
 const AUTH_PROTOCOL = "baseline-desktop:";
 const OPEN_SHORTCUT = "Control+Alt+B";
 const CONFIG_NAME = "desktop-settings.json";
+const COMMAND_CONFIDENCE = 0.68;
+const WAKE_CONFIDENCE = { relaxed: 0.72, balanced: 0.82, strict: 0.90 };
+const SPEAKING_WAKE_BONUS = 0.06;
+const WAKE_COOLDOWN_MS = 1200;
 const VOICE_CHATS = [
   { domain: "chief_of_staff", label: "Chief of Staff" },
   { domain: "general", label: "General" },
@@ -15,7 +19,7 @@ const VOICE_CHATS = [
   { domain: "running", label: "Running" },
   { domain: "nutrition", label: "Nutrition" },
 ];
-const DEFAULT_SETTINGS = { serverUrl: "", wakeEnabled: true, launchAtLogin: true, voiceTarget: "chief_of_staff" };
+const DEFAULT_SETTINGS = { serverUrl: "", wakeEnabled: true, wakeSensitivity: "balanced", launchAtLogin: true, voiceTarget: "chief_of_staff" };
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 let window;
@@ -28,6 +32,7 @@ let pasteTimer;
 let settings = { ...DEFAULT_SETTINGS };
 let allowedAuthOrigin = null;
 let quitting = false;
+let lastWakeAcceptedAt = 0;
 
 function configPath() { return path.join(app.getPath("userData"), CONFIG_NAME); }
 
@@ -35,6 +40,7 @@ function loadSettings() {
   try { settings = { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(configPath(), "utf8")) }; }
   catch { settings = { ...DEFAULT_SETTINGS }; }
   if (!VOICE_CHATS.some((chat) => chat.domain === settings.voiceTarget)) settings.voiceTarget = DEFAULT_SETTINGS.voiceTarget;
+  if (!Object.hasOwn(WAKE_CONFIDENCE, settings.wakeSensitivity)) settings.wakeSensitivity = DEFAULT_SETTINGS.wakeSensitivity;
 }
 
 function saveSettings() {
@@ -106,6 +112,17 @@ function handleBridgeLine(line) {
     return;
   }
   if (!settings.wakeEnabled) return;
+  const confidence = Number(event.confidence);
+  if (!Number.isFinite(confidence)) return;
+  const wakeThreshold = Math.min(0.95, WAKE_CONFIDENCE[settings.wakeSensitivity]
+    + (voiceState === "speaking" ? SPEAKING_WAKE_BONUS : 0));
+  if (confidence < (event.type === "wake" ? wakeThreshold : COMMAND_CONFIDENCE)) return;
+  if (event.type === "wake") {
+    if (voiceState !== "idle" && voiceState !== "speaking" && voiceState !== "dictating") return;
+    const now = Date.now();
+    if (now - lastWakeAcceptedAt < WAKE_COOLDOWN_MS) return;
+    lastWakeAcceptedAt = now;
+  }
   if (event.type === "wake" && voiceState === "speaking") {
     send("baseline:stop-speaking");
     resetVoice();
@@ -263,6 +280,14 @@ function updateTray() {
       }
       updateTray();
     } },
+    { label: "Wake sensitivity", submenu: [
+      { value: "relaxed", label: "Relaxed — easier to start" },
+      { value: "balanced", label: "Balanced — fewer false starts" },
+      { value: "strict", label: "Strict — quietest" },
+    ].map((choice) => ({
+      label: choice.label, type: "radio", checked: settings.wakeSensitivity === choice.value,
+      click: () => { settings.wakeSensitivity = choice.value; saveSettings(); updateTray(); },
+    })) },
     { label: "Start with Windows", type: "checkbox", checked: settings.launchAtLogin, click: (item) => {
       settings.launchAtLogin = item.checked; app.setLoginItemSettings({ openAtLogin: item.checked }); saveSettings(); updateTray();
     } },
