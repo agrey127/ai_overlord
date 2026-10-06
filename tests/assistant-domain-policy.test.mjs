@@ -25,6 +25,7 @@ function loadTypeScript(path, dependencies = {}) {
 
 const policy = loadTypeScript(join("lib", "assistant", "domain-policy.ts"));
 const { assertDomainToolCall, domainToolNames } = policy;
+const baselineData = loadTypeScript(join("lib", "assistant", "baseline-data.ts"));
 const tools = loadTypeScript(join("lib", "assistant", "tools.ts"), {
   "@/lib/assistant/domain-policy": policy,
   "@/lib/assistant/personal-totals": {},
@@ -32,6 +33,7 @@ const tools = loadTypeScript(join("lib", "assistant", "tools.ts"), {
   "@/lib/assistant/staff-brief": {},
   "@/lib/assistant/running-coach": {},
   "@/lib/assistant/coaching-goals": {},
+  "@/lib/assistant/baseline-data": baselineData,
   "@/lib/assistant/strength-coach": {},
   "@/lib/assistant/nutrition-coach": {},
   "@/lib/assistant/delegations": {},
@@ -58,8 +60,7 @@ test("the model receives only the selected chat's tools and scoped schemas", () 
   assert.deepEqual(nutrition.tools.map((tool) => tool.name).sort(), [...domainToolNames.nutrition].sort());
   assert.deepEqual(strength.tools.map((tool) => tool.name).sort(), [...domainToolNames.strength].sort());
   assert.deepEqual(general.tools.map((tool) => tool.name).sort(), [...domainToolNames.general].sort());
-  assert.deepEqual(chief.tools.map((tool) => tool.name).sort(),
-    ["get_chief_of_staff_brief", "get_shared_coaching_goals", "get_delegated_tasks", "delegate_specialist_task"].sort());
+  assert.deepEqual(chief.tools.map((tool) => tool.name).sort(), [...domainToolNames.chief_of_staff].sort());
   assert.deepEqual(running.tools.find((tool) => tool.name === "query_personal_totals").parameters.properties.dataset.enum, ["runs"]);
   assert.deepEqual(nutrition.tools.find((tool) => tool.name === "query_personal_totals").parameters.properties.dataset.enum, ["meal_logs"]);
   assert.deepEqual(running.tools.find((tool) => tool.name === "prepare_activity_import").parameters.properties.activity_type.enum, ["run"]);
@@ -93,8 +94,8 @@ test("cross-domain writes are rejected before dispatch", () => {
   assert.throws(() => assertDomainToolCall("strength", "log_saved_meal", {}), /not available/);
   assert.throws(() => assertDomainToolCall("general", "prepare_estimated_meal", {}), /not available/);
   assert.throws(() => assertDomainToolCall("chief_of_staff", "log_set", {}), /not available/);
-  assert.throws(() => assertDomainToolCall("chief_of_staff", "query_personal_totals", { dataset: "runs" }), /not available/);
-  assert.throws(() => assertDomainToolCall("chief_of_staff", "get_running_coach_context", {}), /not available/);
+  assert.doesNotThrow(() => assertDomainToolCall("chief_of_staff", "query_personal_totals", { dataset: "runs" }));
+  assert.doesNotThrow(() => assertDomainToolCall("chief_of_staff", "get_running_coach_context", {}));
   assert.throws(() => assertDomainToolCall("nutrition", "prepare_running_week", {}), /not available/);
   assert.throws(() => assertDomainToolCall("running", "prepare_strength_coach_profile", {}), /not available/);
   assert.throws(() => assertDomainToolCall("nutrition", "confirm_strength_coach_profile", {}), /not available/);
@@ -108,6 +109,36 @@ test("totals are restricted to the chat's dataset", () => {
   assert.throws(() => assertDomainToolCall("running", "query_personal_totals", { dataset: "meal_logs" }), /running totals only/);
   assert.doesNotThrow(() => assertDomainToolCall("nutrition", "query_personal_totals", { dataset: "meal_logs" }));
   assert.throws(() => assertDomainToolCall("nutrition", "query_personal_totals", { dataset: "activities" }), /meal-log totals only/);
+});
+
+test("Chief of Staff can read weight and goals only for the signed-in user", async () => {
+  const calls = [];
+  const supabase = {
+    from(table) {
+      calls.push(["from", table]);
+      return {
+        select(columns) { calls.push(["select", columns]); return this; },
+        eq(column, value) { calls.push(["eq", column, value]); return this; },
+        order(column, options) { calls.push(["order", column, options]); return this; },
+        async range(start, end) {
+          calls.push(["range", start, end]);
+          return { data: [{ measured_at: "2026-10-05", weight_lbs: 180 }], error: null };
+        },
+      };
+    },
+  };
+  const result = await tools.runAssistantTool(supabase, "signed-in-user", "read_baseline_dataset",
+    JSON.stringify({ dataset: "body_weight_logs", limit: 1, offset: 0 }), { domain: "chief_of_staff" });
+  assert.equal(result.records[0].weight_lbs, 180);
+  assert.deepEqual(calls[0], ["from", "body_weight_logs"]);
+  assert.deepEqual(calls.find((call) => call[0] === "eq"), ["eq", "user_id", "signed-in-user"]);
+  assert.ok(domainToolNames.chief_of_staff.includes("get_shared_coaching_goals"));
+  assert.ok(domainToolNames.chief_of_staff.includes("get_nutrition_coach_context"));
+  assert.ok(!Object.keys(baselineData.baselineDatasets).some((name) => /token|credential|connection/.test(name)));
+  await assert.rejects(
+    baselineData.readBaselineDataset(supabase, "signed-in-user", "google_calendar_tokens", 1, 0),
+    /Choose a dataset/,
+  );
 });
 
 test("running import accepts runs only", () => {

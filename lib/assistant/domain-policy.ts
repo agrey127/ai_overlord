@@ -24,8 +24,13 @@ export const nutritionToolNames = [
 ] as const;
 
 export const generalToolNames = ["query_personal_totals", "get_next_workout"] as const;
-export const chiefOfStaffToolNames = ["get_chief_of_staff_brief", "get_shared_coaching_goals",
-  "get_delegated_tasks", "delegate_specialist_task"] as const;
+export const chiefOfStaffToolNames = [
+  "get_chief_of_staff_brief", "get_shared_coaching_goals", "get_delegated_tasks", "delegate_specialist_task",
+  "list_baseline_datasets", "read_baseline_dataset",
+  "get_running_coach_context", "get_strength_coach_context", "get_nutrition_coach_context",
+  "query_personal_totals", "get_next_workout", "list_workout_rotation", "get_rotation_workout",
+  "list_workout_plans", "get_workout_plan", "get_strength_progress", "list_saved_meals",
+] as const;
 
 export const domainToolNames: Partial<Record<AssistantDomain, readonly string[]>> = {
   strength: strengthToolNames,
