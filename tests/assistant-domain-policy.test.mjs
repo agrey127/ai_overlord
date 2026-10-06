@@ -147,6 +147,57 @@ test("running import accepts runs only", () => {
   assert.throws(() => assertDomainToolCall("nutrition", "prepare_activity_import", { activity_type: "run" }), /not available/);
 });
 
+test("Chief history reads keep both owner and conversation filters and can page past 2000 records", async () => {
+  const filters = [];
+  let requestedRange;
+  const supabase = { from: () => ({
+    select() { return this; },
+    eq(column, value) { filters.push([column, value]); return this; },
+    order() { return this; },
+    async range(start, end) {
+      requestedRange = [start, end];
+      return { data: [{ content: "first" }, { content: "second" }], error: null };
+    },
+  }) };
+  const result = await baselineData.readBaselineDataset(supabase, "owner", "assistant_messages", 1, 2500, "chosen-chat");
+  assert.deepEqual(filters, [["user_id", "owner"], ["conversation_id", "chosen-chat"]]);
+  assert.deepEqual(requestedRange, [2500, 2501]);
+  assert.equal(result.next_offset, 2501);
+  assert.deepEqual(result.records, [{ content: "first" }]);
+  await assert.rejects(baselineData.readBaselineDataset(supabase, "owner", "body_weight_logs", 1, 0, "chosen-chat"), /applies only/);
+  assert.throws(() => assertDomainToolCall("running", "read_baseline_dataset", {}), /not available/);
+});
+
+test("book titles are fetched only for the owner's selected books", async () => {
+  const bookQueries = [];
+  const supabase = { from(table) {
+    return {
+      select() { return this; }, eq() { return this; }, order() { return this; },
+      async range() { return { data: [{ book_id: 123, rating: 4 }], error: null }; },
+      async in(column, values) {
+        bookQueries.push({ table, column, values });
+        return { data: [{ book_id: 123, title: "Selected book" }], error: null };
+      },
+    };
+  } };
+  const result = await baselineData.readBaselineDataset(supabase, "owner", "reading_books", 1, 0);
+  assert.deepEqual(bookQueries, [{ table: "hardcover_books", column: "book_id", values: [123] }]);
+  assert.equal(result.book_details[0].title, "Selected book");
+});
+
+test("legacy sprint data uses the verified Auth UUID rather than the dashboard email", async () => {
+  const filters = [];
+  const supabase = {
+    auth: { async getUser() { return { data: { user: { id: "verified-auth-id" } }, error: null }; } },
+    from: () => ({
+      select() { return this; }, eq(column, value) { filters.push([column, value]); return this; },
+      order() { return this; }, async range() { return { data: [], error: null }; },
+    }),
+  };
+  await baselineData.readBaselineDataset(supabase, "dashboard-email", "sprints", 1, 0);
+  assert.deepEqual(filters, [["user_id", "verified-auth-id"]]);
+});
+
 test("a pending draft cannot be confirmed from another thread", async () => {
   const supabase = {
     from: () => ({

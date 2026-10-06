@@ -50,7 +50,9 @@ longer require an estimated calorie value when the watch did not provide one.
 The Running coach reads only Running data plus limited recovery signals. Chief
 of Staff can read the signed-in user's saved data across Baseline, including
 weight entries, goals, and Running training limits, through an explicit
-allowlist. It does not receive specialist write tools or full chat transcripts.
+allowlist. It can inspect saved chat history on request; specialist write tools
+remain in their own chats. New user-facing sources must be included in Chief's
+catalog as described in `AGENTS.md`.
 See `markdown/assistant_domains.md` for the tool boundary and migration notes.
 
 ## Getting Started

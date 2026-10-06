@@ -64,9 +64,10 @@ export const assistantTools: FunctionTool[] = [
       properties: {
         dataset: { type: "string", enum: Object.keys(baselineDatasets) },
         limit: { type: "integer", minimum: 1, maximum: 25 },
-        offset: { type: "integer", minimum: 0, maximum: 2000 },
+        offset: { type: "integer", minimum: 0, maximum: 2147483600 },
+        conversation_id: { type: ["string", "null"], description: "For assistant_messages, read a specific chat ID from assistant_chats. Otherwise null." },
       },
-      required: ["dataset", "limit", "offset"], additionalProperties: false,
+      required: ["dataset", "limit", "offset", "conversation_id"], additionalProperties: false,
     },
   },
   {
@@ -736,9 +737,12 @@ export async function runAssistantTool(
 
   switch (name) {
     case "list_baseline_datasets":
-      return { datasets: listBaselineDatasets() };
+      return { datasets: listBaselineDatasets(), unavailable_sources: [
+        { source: "Jellyfin viewing history", reason: "No verified link from a Jellyfin user to the signed-in Baseline account yet." },
+      ] };
     case "read_baseline_dataset":
-      return readBaselineDataset(supabase, userId, String(args.dataset), Number(args.limit), Number(args.offset));
+      return readBaselineDataset(supabase, userId, String(args.dataset), Number(args.limit), Number(args.offset),
+        args.conversation_id == null ? null : String(args.conversation_id));
     case "get_shared_coaching_goals":
       return getSharedCoachingGoals(supabase, userId);
     case "get_delegated_tasks":
