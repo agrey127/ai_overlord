@@ -9,7 +9,7 @@ import { strengthInstructions } from "@/lib/assistant/prompts/strength";
 import { chiefOfStaffInstructions } from "@/lib/assistant/prompts/chief-of-staff";
 import { domainToolNames } from "@/lib/assistant/domain-policy";
 
-export const ASSISTANT_PROMPT_VERSION = 9;
+export const ASSISTANT_PROMPT_VERSION = 10;
 
 type ConfiguredDomain = "general" | "strength" | "running" | "nutrition" | "chief_of_staff";
 
@@ -43,6 +43,7 @@ function toolsForDomain(domain: ConfiguredDomain): FunctionTool[] {
   }
   return selected.map((tool) => {
     if (tool.name === "query_personal_totals") {
+      if (domain === "strength") return restrictEnum(tool, "dataset", ["runs", "meal_logs"]);
       if (domain === "running") return restrictEnum(tool, "dataset", ["runs"]);
       if (domain === "nutrition") return restrictEnum(tool, "dataset", ["meal_logs"]);
     }

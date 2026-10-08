@@ -32,3 +32,7 @@
 @media(pointer:coarse){.composer input{font-size:16px}}
 @media(max-width:700px){.shell{display:flex;flex-direction:column}.header{flex:0 0 65px}.workspace{flex:1 1 auto;height:auto;min-height:0}.keyboardOpen{position:fixed;left:0;right:0;width:100%;padding-bottom:0;z-index:60}.keyboardOpen .chatPanel{padding-bottom:8px}.keyboardOpen .quickActions{display:none}.keyboardOpen .messages{overscroll-behavior:contain}}
 .keyboardChatLabel{color:var(--faint);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+
+/* Keep the existing centered chat name and explicitly pin Chats to the right. */
+@media(max-width:700px){.header{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}.newButton{grid-column:3;grid-row:1;justify-self:end}.shell{padding-bottom:calc(64px + env(safe-area-inset-bottom))}.chatPanel{padding-bottom:0}.messages{padding-bottom:4px}.messages>article:last-of-type{margin-bottom:8px}.keyboardOpen{padding-bottom:0}}
+@media(min-width:641px) and (max-width:700px){.shell{padding-bottom:calc(80px + env(safe-area-inset-bottom))}.keyboardOpen{padding-bottom:0}}

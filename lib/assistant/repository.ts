@@ -1,3 +1,4 @@
+import { getRecoveryContext } from "@/lib/assistant/recovery-context";
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
@@ -1343,6 +1344,8 @@ export async function completeTodayWorkout(supabase: SupabaseClient, userId: str
   return {
     ...(data as Record<string, unknown>),
     workout: await getWorkoutById(supabase, userId, workout.id),
+    next_workout: await getCurrentOrNextWorkout(supabase, userId),
+    recovery_context: await getRecoveryContext(supabase, userId),
   };
 }
 

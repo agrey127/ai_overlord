@@ -7,7 +7,7 @@ export const strengthToolNames = [
   "delete_workout_plan", "start_workout", "return_workout_to_scheduled",
   "replace_today_workout", "set_workout_warmups", "set_exercise_target_weight",
   "set_exercise_training_role", "log_set", "update_set", "delete_set",
-  "complete_workout", "get_strength_progress",
+  "complete_workout", "get_strength_progress", "query_personal_totals",
 ] as const;
 
 export const runningToolNames = [
@@ -46,6 +46,9 @@ export function assertDomainToolCall(domain: AssistantDomain, name: string, args
   }
   if (name === "query_personal_totals") {
     const dataset = String(args.dataset ?? "");
+    if (domain === "strength" && !["runs", "meal_logs"].includes(dataset)) {
+      throw new Error("The Strength chat can read running and meal-log totals only.");
+    }
     if (domain === "running" && dataset !== "runs") {
       throw new Error("The Running chat can read running totals only.");
     }

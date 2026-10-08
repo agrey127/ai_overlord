@@ -239,3 +239,83 @@ test("a pending draft cannot be confirmed from another thread", async () => {
     /different conversation/,
   );
 });
+
+const { summarizeRecovery, getRecoveryContext } = loadTypeScript("lib/assistant/recovery-context.ts", {
+  "@/lib/assistant/coaching-goals": { getSharedCoachingGoals: async () => { throw new Error("offline"); } },
+  "@/lib/assistant/personal-totals": { queryPersonalTotals: async () => { throw new Error("offline"); } },
+});
+
+test("strength totals allow coaching reads but exclude general activities", () => {
+  assert.doesNotThrow(() => assertDomainToolCall("strength", "query_personal_totals", { dataset: "runs" }));
+  assert.doesNotThrow(() => assertDomainToolCall("strength", "query_personal_totals", { dataset: "meal_logs" }));
+  assert.throws(() => assertDomainToolCall("strength", "query_personal_totals", { dataset: "activities" }), /running and meal-log totals only/);
+  assert.deepEqual(getAssistantDomainConfig("strength").tools.find(tool => tool.name === "query_personal_totals").parameters.properties.dataset.enum, ["runs", "meal_logs"]);
+});
+
+test("recovery uses local completion dates, unique training days, and full rest days", () => {
+  const summary = summarizeRecovery([
+    "2026-10-08T02:00:00Z", // Oct 7 locally
+    "2026-10-07T18:00:00Z", // another session on Oct 7
+    "2026-10-06T18:00:00Z",
+    "2026-10-03T18:00:00Z",
+  ], "2026-10-08T16:00:00Z");
+  assert.equal(summary.latest_training_day, "2026-10-07");
+  assert.equal(summary.completed_sessions_in_window, 4);
+  assert.equal(summary.consecutive_strength_training_days_ending_latest, 2);
+  assert.equal(summary.full_rest_days_between_latest_training_days, 0);
+  assert.equal(summary.days_since_latest_training, 1);
+  assert.equal(summarizeRecovery(["2026-10-07T18:00:00Z", "2026-10-03T18:00:00Z"], "2026-10-08T16:00:00Z").full_rest_days_between_latest_training_days, 3);
+  assert.equal(summarizeRecovery([], "2026-10-08T16:00:00Z").days_since_latest_training, null);
+});
+
+test("unavailable recovery inputs remain unknown without rejecting completion", async () => {
+  const supabase = { from: () => ({
+    select() { return this; }, eq() { return this; }, gte() { return this; },
+    lte() { return this; }, order() { return this; },
+    async limit() { return { data: null, error: { message: "offline" } }; },
+  }) };
+  const context = await getRecoveryContext(supabase, "user-1");
+  assert.ok(Object.values(context).every(source => source.unavailable === true));
+});
+
+test("Finish workout saves the review and response chain; model failure preserves completion", async () => {
+  for (const failReview of [false, true]) {
+    let completions = 0;
+    const messages = [];
+    const updates = [];
+    const result = { completed_set_count: 4, workout: { name: "Lower" }, next_workout: { name: "Upper" }, recovery_context: { strength: { consecutive_strength_training_days_ending_latest: 2 } } };
+    const { POST } = loadTypeScript("app/api/assistant/workouts/complete/route.ts", {
+      "node:crypto": { createHash: () => ({ update() { return this; }, digest: () => "anonymous-user-hash" }) },
+      "openai": { default: class { responses = { create: async (input) => {
+        assert.equal(input.tools, undefined);
+        assert.ok(input.input[0].content.includes("recovery_context"));
+        assert.equal(input.previous_response_id, "prior-response");
+        if (failReview) throw new Error("offline");
+        return { id: "review-response", output_text: "Four sets logged. Upper is next; consider rest based on soreness." };
+      } }; } },
+      "next/server": { NextResponse: { json: (body, options) => ({ body, status: options?.status ?? 200 }) } },
+      "@/lib/supabase/authenticated": { authenticateRequest: async () => ({ supabase: {}, userId: "user-1" }) },
+      "@/lib/assistant/domain-config": { getAssistantDomainConfig, ASSISTANT_PROMPT_VERSION: 3 },
+      "@/lib/assistant/repository": {
+        getConversation: async () => ({ id: "strength-chat", domain: "strength", last_response_id: "prior-response" }),
+        completeTodayWorkout: async () => { completions++; return result; },
+        getCurrentOrNextWorkout: async () => result.next_workout,
+        saveMessage: async (_, input) => { messages.push(input); return input; },
+        updateConversation: async (...args) => updates.push(args[3]),
+      },
+    });
+    const response = await POST({ json: async () => ({ conversationId: "strength-chat" }) });
+    assert.equal(response.status, 200);
+    assert.equal(completions, 1);
+    assert.equal(response.body.workout.name, "Upper");
+    assert.equal(messages.at(-1).role, "assistant");
+    assert.equal(messages.at(-1).metadata.review_unavailable, failReview);
+    if (failReview) {
+      assert.match(messages.at(-1).content, /completed with 4 working sets/);
+      assert.match(messages.at(-1).content, /Next in rotation: Upper/);
+      assert.equal(updates.length, 0);
+    } else {
+      assert.deepEqual(updates, [{ last_response_id: "review-response" }]);
+    }
+  }
+});
