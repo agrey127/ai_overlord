@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   fetchTodayNutritionHome,
   fetchWeightTrends7d,
@@ -200,7 +201,7 @@ export default async function BaselineHomePage() {
           </div>
 
           {/* Weight */}
-          <div className="card">
+          <Link href="/baseline/more/weight" className="card" style={{ textDecoration: "none", color: "inherit" }} aria-label="Weight: view weight logs and trends">
             <div className="card-inner">
               <div className="card-title">Weight</div>
               <div className="stat-top-row">
@@ -215,7 +216,7 @@ export default async function BaselineHomePage() {
                 {fmt(prevWeightAvg7d, 1)} lb previous avg (7d)
               </div>
             </div>
-          </div>
+          </Link>
         </div>  
       </section>
 

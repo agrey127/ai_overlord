@@ -1,0 +1,18 @@
+.workspace { display: grid; gap: 18px; }
+.workspace h2 { margin: 0 0 18px; font-size: 18px; }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.stats strong { display: block; font-size: clamp(24px, 5vw, 36px); margin: 12px 0 6px; }
+.ranges { display: flex; flex-wrap: wrap; gap: 8px; }
+.ranges button, .loadMore { border: 1px solid var(--border); border-radius: 9px; padding: 9px 13px; background: rgba(255,255,255,.04); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+.ranges button[aria-pressed="true"] { background: rgba(124,58,237,.25); border-color: #a78bfa; color: #ddd6fe; }
+.ranges button:focus-visible, .loadMore:focus-visible { outline: 2px solid #a78bfa; outline-offset: 3px; }
+.chart { margin-top: 22px; color: var(--muted); }
+.chart svg { width: 100%; height: auto; display: block; }
+.empty { padding: 40px 0; color: var(--muted); line-height: 1.6; }
+.tableWrap { overflow-x: auto; }
+.tableWrap table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+.tableWrap th { color: var(--muted); font-weight: 600; font-size: 12px; }
+.tableWrap th, .tableWrap td { padding: 14px 8px; border-bottom: 1px solid var(--border); }
+.tableWrap td:nth-child(2) { white-space: nowrap; font-weight: 700; }
+.tableWrap td:last-child { text-transform: capitalize; color: var(--muted); }
+@media (max-width: 480px) { .tableWrap th, .tableWrap td { padding: 12px 4px; font-size: 12px; } }

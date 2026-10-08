@@ -10,6 +10,11 @@ type Module = {
 
 const modules: Module[] = [
   {
+    title: "Weight Logs",
+    description: "All weigh-ins and your average weight over time.",
+    href: "/baseline/more/weight",
+  },
+  {
     title: "Profile & Goals",
     description: "Profile, training targets, nutrition goals, and upcoming races.",
     href: "/baseline/more/settings",
