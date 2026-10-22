@@ -10,6 +10,12 @@ type Module = {
 
 const modules: Module[] = [
   {
+    title: "Garmin Connect",
+    description: "Review and import completed runs from your Garmin account.",
+    href: "/baseline/more/garmin",
+    accent: true,
+  },
+  {
     title: "Weight Logs",
     description: "All weigh-ins and your average weight over time.",
     href: "/baseline/more/weight",

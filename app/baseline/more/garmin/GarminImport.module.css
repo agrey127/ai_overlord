@@ -1,0 +1,10 @@
+.import { margin-top: 24px; }
+.range { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; padding: 0; border: 0; margin: 0; }
+.range label { display: grid; gap: 7px; flex: 1 1 160px; min-width: 0; }
+.import input[type="date"] { width: 100%; min-width: 0; box-sizing: border-box; padding: 11px; border-radius: 10px; border: 1px solid rgba(255,255,255,.2); background: #171b29; color: #fff; color-scheme: dark; }
+.import button { padding: 12px 16px; border-radius: 10px; border: 1px solid rgba(168,85,247,.4); background: #6538a6; color: #fff; font: inherit; cursor: pointer; }
+.import button:disabled { opacity: .5; cursor: default; }
+.import :focus-visible { outline: 2px solid #c4a0ff; outline-offset: 3px; }
+.list { display: grid; gap: 10px; margin-bottom: 18px; }
+.run { display: flex; align-items: start; gap: 12px; padding: 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.run input { margin-top: 7px; width: 18px; height: 18px; flex-shrink: 0; }

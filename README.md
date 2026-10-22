@@ -21,7 +21,39 @@ server-only token and secret-key path.
 Never use a Supabase secret or service-role key for browser pages or general
 dashboard rendering.
 
-## Database access
+## Garmin Personal run imports
+
+Open **More → Garmin Connect** to preview a date range and import selected
+completed runs. This uses Garmin's official Personal API, not Garmin login
+credentials or unofficial endpoints. It is a single-owner personal integration.
+Before activation, set `GARMIN_PERSONAL_API_KEY` and `GARMIN_PERSONAL_USER_ID` in
+the protected runtime environment. The owner must exactly match the signed-in
+Baseline email (or Auth UUID when no email is present). Never prefix these with
+`NEXT_PUBLIC_`, put their values in Git, or paste the key into chat. Host setup
+and deployment instructions belong in the Homelab service runbook.
+
+Garmin keys are created by the user at
+<https://connect.garmin.com/app/settings/personalApiToken> and expire after the
+selected period. Access tokens are exchanged server-side and cached only in
+memory. API failures show sanitized messages. No raw response, token, or GPS
+track is stored or exposed to Chief of Staff.
+
+Imports use the signed-in Supabase client and existing activities RLS. They
+insert source `garmin_personal` and a stable Garmin activity fingerprint;
+retries never overwrite records. Possible matches to existing manual/screenshot
+runs are excluded for human review. Pagination covers both Garmin and Baseline
+records; date windows over one year or more than 500 Garmin runs require a
+smaller window. Partial failures report saved counts so a fresh preview can
+resume safely. Source units are meters, seconds, kcal and steps/minute; date
+uses Garmin's local start date, and pace uses Garmin's average speed.
+
+This version imports run summaries only, with user confirmation. It does not
+sync automatically, import strength sets, or send plans to Garmin. Actual key
+activation and a live Garmin import must be verified separately from mocked
+API tests. Official reference:
+<https://developer.garmin.com/gc-developer-program/personal/swagger-docs/>.
+
+## Database access and verification
 
 Migration `20260928171202_protect_legacy_app_data.sql` enables RLS on the
 remaining legacy public tables, limits personal rows to the signed-in user's
