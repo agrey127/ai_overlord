@@ -62,7 +62,7 @@ test("stable Garmin IDs and screenshot matches prevent double-counting", () => {
 
 test("official token exchange, token caching and complete pagination", async () => {
   const calls = [];
-  const client = load("lib/garmin/client.ts", {}, async (url, options) => {
+  const client = load("lib/garmin/api.ts", {}, async (url, options) => {
     calls.push({ url, options });
     if (url.includes("personal-api-key/token")) {
       assert.equal(options.headers.Accept, "text/plain");
@@ -81,18 +81,18 @@ test("official token exchange, token caching and complete pagination", async () 
 
 test("Garmin response bodies and network errors never leak secrets", async () => {
   for (const status of [401, 403, 429, 500]) {
-    const client = load("lib/garmin/client.ts", {}, async () => new Response("secret response", { status }));
+    const client = load("lib/garmin/api.ts", {}, async () => new Response("secret response", { status }));
     await assert.rejects(client.fetchRuns("secret-key", "2026-10-01", "2026-10-22"), (error) => {
       assert.ok(!error.message.includes("secret")); return true;
     });
   }
-  const client = load("lib/garmin/client.ts", {}, async () => { throw new Error("secret-key"); });
+  const client = load("lib/garmin/api.ts", {}, async () => { throw new Error("secret-key"); });
   await assert.rejects(client.fetchRuns("secret-key", "2026-10-01", "2026-10-22"), /unavailable/);
 });
 
 test("too many activities or an invalid payload fails instead of silently truncating", async () => {
   for (const page of [Array(100).fill(sample), { unexpected: true }]) {
-    const client = load("lib/garmin/client.ts", {}, async (url) =>
+    const client = load("lib/garmin/api.ts", {}, async (url) =>
       url.includes("personal-api-key/token") ? new Response("mock") : Response.json(page));
     await assert.rejects(client.fetchRuns("mock-key", "2026-10-01", "2026-10-22"));
   }
@@ -100,7 +100,7 @@ test("too many activities or an invalid payload fails instead of silently trunca
 
 test("token exchange rejects unexpected JSON and empty plain-text responses", async () => {
   for (const body of [JSON.stringify({ access_token: "unexpected-json" }), "", "contains whitespace"]){
-    const client = load("lib/garmin/client.ts", {}, async () => new Response(body));
+    const client = load("lib/garmin/api.ts", {}, async () => new Response(body));
     await assert.rejects(client.fetchRuns("mock-key", "2026-10-01", "2026-10-22"), /unexpected response/);
   }
 });
@@ -144,4 +144,76 @@ test("import rechecks duplicates and reports partial saves safely for retry", as
   assert.equal(result.duplicates, 2);
   assert.match(result.error, /could not save/);
   assert.ok(inserted.every((row) => row.user_id === "owner@example.test" && !("duplicate" in row)));
+});
+
+const cutoff = "2026-10-22T16:50:15.000Z";
+const syncNow = "2026-10-22T20:00:00.000Z";
+function syncModule(rows) {
+  return load("lib/garmin/sync.ts", { "./activity": activity, "./api": { fetchRuns: async () => rows } });
+}
+
+test("automatic sync excludes old, equal-cutoff, missing-UTC and future starts", async () => {
+  const rows = [
+    { ...sample, startTimeGMT: "2026-10-22 16:50:14", startTimeLocal: "2026-10-22 18:50:14" },
+    { ...sample, startTimeGMT: "2026-10-22 16:50:15" },
+    { ...sample, startTimeGMT: undefined },
+    { ...sample, startTimeGMT: "2026-02-30 17:00:00" },
+    { ...sample, startTimeGMT: "2026-10-23 16:00:00" },
+  ];
+  const sync = syncModule(rows);
+  const supabase = { from() { throw new Error("Historical runs must not touch the database"); } };
+  const result = await sync.synchronizeRuns(supabase, "owner", "key", cutoff, syncNow);
+  assert.equal(result.excluded, 5);
+  assert.equal(result.imported, 0);
+  assert.equal(sync.startedAfterCutoff({ startTimeGMT: "2026-10-22 16:50:15.001" }, Date.parse(cutoff), Date.parse(syncNow)), true);
+});
+
+test("automatic sync only inserts new runs for the configured owner and preserves existing matches", async () => {
+  const first = { ...sample, activityId: 2001, startTimeLocal: "2026-10-22 13:00:00", startTimeGMT: "2026-10-22 17:00:00" };
+  const matched = { ...first, activityId: 2002, duration: 2400, distance: 6437.376 };
+  const sync = syncModule([first, matched]);
+  const filters = [];
+  const inserts = [];
+  const manual = { ...activity.normalizeRun(matched), source: "manual", source_fingerprint: null };
+  const supabase = { from(table) {
+    assert.equal(table, "activities");
+    const query = {
+      select() { return query; }, eq(name, value) { filters.push([name, value]); return query; },
+      gte() { return query; }, lte() { return query; }, order() { return query; },
+      range: async () => ({ data: [manual], error: null }),
+      insert: async (row) => { inserts.push(row); return { error: null }; },
+      // No update, delete, or upsert method: using any of them fails this test.
+    }; return query;
+  } };
+  const result = await sync.synchronizeRuns(supabase, "owner", "key", cutoff, syncNow);
+  assert.equal(result.imported, 1);
+  assert.equal(result.duplicates, 1);
+  assert.equal(inserts[0].source_fingerprint, "garmin_personal:2001");
+  assert.equal(inserts[0].user_id, "owner");
+  assert.ok(filters.some(([name, value]) => name === "user_id" && value === "owner"));
+  assert.equal(manual.source, "manual");
+});
+
+test("automatic sync catches uniqueness races and fails writes without reporting success", async () => {
+  const sync = syncModule([{ ...sample, startTimeLocal: "2026-10-22 13:00:00", startTimeGMT: "2026-10-22 17:00:00" }]);
+  for (const code of ["23505", "42501"]) {
+    const query = { select() { return query; }, eq() { return query; }, gte() { return query; },
+      lte() { return query; }, order() { return query; }, range: async () => ({ data: [] }), insert: async () => ({ error: { code } }) };
+    const result = sync.synchronizeRuns({ from: () => query }, "owner", "key", cutoff, syncNow);
+    if (code === "23505") assert.equal((await result).duplicates, 1);
+    else await assert.rejects(result, /will retry/);
+  }
+});
+
+test("sync windows preserve the immutable cutoff and rescan delayed uploads daily", () => {
+  const sync = syncModule([]);
+  assert.equal(sync.syncWindow(cutoff, syncNow).fullScan, true);
+  assert.throws(() => sync.syncWindow("", syncNow), /Invalid/);
+  assert.throws(() => sync.syncWindow("2026-02-30T16:50:15.000Z", syncNow), /Invalid/);
+  assert.equal(sync.syncWindow(cutoff, "2026-11-22T20:00:00.000Z", "2026-11-22T19:45:00.000Z", "2026-11-22T01:00:00.000Z").fullScan, false);
+  const catchup = sync.syncWindow(cutoff, "2026-11-22T20:00:00.000Z", "2026-11-22T19:45:00.000Z", "2026-11-20T01:00:00.000Z");
+  assert.equal(catchup.fullScan, true);
+  assert.equal(catchup.start, "2026-10-21");
+  assert.equal(catchup.cutoff, Date.parse(cutoff));
+  assert.equal(sync.syncWindow(cutoff, syncNow, "2099-01-01T00:00:00.000Z", syncNow).fullScan, true);
 });

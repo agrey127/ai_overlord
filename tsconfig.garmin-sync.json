@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "CommonJS", "moduleResolution": "node",
+    "outDir": "build/garmin-sync", "rootDir": ".", "strict": true,
+    "skipLibCheck": true, "esModuleInterop": true, "noEmitOnError": true
+  },
+  "files": ["scripts/garmin-sync.ts"],
+  "include": []
+}

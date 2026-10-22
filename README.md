@@ -47,8 +47,23 @@ smaller window. Partial failures report saved counts so a fresh preview can
 resume safely. Source units are meters, seconds, kcal and steps/minute; date
 uses Garmin's local start date, and pace uses Garmin's average speed.
 
-This version imports run summaries only, with user confirmation. It does not
-sync automatically, import strength sets, or send plans to Garmin. Actual key
+Manual imports require confirmation. The scheduled worker imports run summaries
+only when their Garmin UTC start is strictly after `GARMIN_AUTO_SYNC_START_AT`.
+The cutoff is mandatory and never defaults to the current time. It only inserts
+new rows, skipping stable IDs and possible manual/screenshot matches; it never
+updates, upserts, deletes, or relabels history. The worker requires the explicit
+Garmin owner to match the existing digest owner and uses the server-only database
+credential for this narrow background job. Browser/manual paths keep using the
+signed-in client and RLS. Chief can read resulting activity summaries through
+the existing catalog; operational timer cursors contain no workout payloads.
+
+`npm run build` compiles `scripts/garmin-sync.ts` into
+`build/garmin-sync/scripts/garmin-sync.js` for the production image. The Homelab
+timer runs it every 15 minutes, rechecks a seven-day overlap, and performs a full
+catch-up from the immutable cutoff at least daily for delayed uploads. Cursors
+advance only after a successful run. Host installation, state, and disabling the
+timer are documented in the Homelab service runbook. Strength sets and sending
+plans to Garmin remain unsupported. Actual key
 activation and a live Garmin import must be verified separately from mocked
 API tests. Official reference:
 <https://developer.garmin.com/gc-developer-program/personal/swagger-docs/>.

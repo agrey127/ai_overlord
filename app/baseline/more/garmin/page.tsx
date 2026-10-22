@@ -24,7 +24,7 @@ export default async function GarminPage() {
           <p><a href="https://connect.garmin.com/app/settings/personalApiToken" target="_blank" rel="noreferrer">Open Garmin Personal API settings ↗</a></p>
           <p className="card-muted">Create a key in Garmin Connect and save it in your password manager. Keep it out of chat.</p>
         </>}
-        <p className="card-muted">Review runs before saving. Previously imported runs and possible matches to manual or screenshot entries are excluded. This imports run summaries; strength sets, planned workouts, and automatic syncing are not included.</p>
+        <p className="card-muted">Scheduled syncing can pick up new runs after its activation cutoff. Use this page to review manual imports. Previously imported runs and possible matches to existing entries are excluded. Strength sets and planned workouts are not included.</p>
         <GarminImport configured={configured} initialStart={start.toISOString().slice(0, 10)} today={today} />
       </div></section>
     </main>
