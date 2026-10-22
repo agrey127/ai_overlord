@@ -64,7 +64,10 @@ test("official token exchange, token caching and complete pagination", async () 
   const calls = [];
   const client = load("lib/garmin/client.ts", {}, async (url, options) => {
     calls.push({ url, options });
-    if (url.includes("personal-api-key/token")) return Response.json({ access_token: "mock-bearer", expires_in: 86400 });
+    if (url.includes("personal-api-key/token")) {
+      assert.equal(options.headers.Accept, "text/plain");
+      return new Response("mock-bearer", { headers: { "Content-Type": "text/plain" } });
+    }
     return Response.json(new URL(url).searchParams.get("start") === "0" ? Array(100).fill(sample) : [sample]);
   });
   assert.equal((await client.fetchRuns("mock-key", "2026-10-01", "2026-10-22")).length, 101);
@@ -89,9 +92,16 @@ test("Garmin response bodies and network errors never leak secrets", async () =>
 
 test("too many activities or an invalid payload fails instead of silently truncating", async () => {
   for (const page of [Array(100).fill(sample), { unexpected: true }]) {
-    const client = load("lib/garmin/client.ts", {}, async (url) => Response.json(
-      url.includes("personal-api-key/token") ? { access_token: "mock" } : page));
+    const client = load("lib/garmin/client.ts", {}, async (url) =>
+      url.includes("personal-api-key/token") ? new Response("mock") : Response.json(page));
     await assert.rejects(client.fetchRuns("mock-key", "2026-10-01", "2026-10-22"));
+  }
+});
+
+test("token exchange rejects unexpected JSON and empty plain-text responses", async () => {
+  for (const body of [JSON.stringify({ access_token: "unexpected-json" }), "", "contains whitespace"]){
+    const client = load("lib/garmin/client.ts", {}, async () => new Response(body));
+    await assert.rejects(client.fetchRuns("mock-key", "2026-10-01", "2026-10-22"), /unexpected response/);
   }
 });
 

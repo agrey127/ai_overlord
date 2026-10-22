@@ -13,29 +13,29 @@ export class GarminError extends Error {
   }
 }
 
-async function request(path: string, authorization: string, method = "GET") {
+async function request(path: string, authorization: string, method = "GET", format: "json" | "text" = "json") {
   let response: Response;
   try {
     response = await fetch(`${base}${path}`, {
-      method, headers: { Authorization: authorization, Accept: "application/json" },
+      method, headers: { Authorization: authorization, Accept: format === "text" ? "text/plain" : "application/json" },
       cache: "no-store", redirect: "error", signal: AbortSignal.timeout(20_000),
     });
   } catch { throw new GarminError(502); }
   if (!response.ok) throw new GarminError(response.status);
-  try { return await response.json() as unknown; } catch { throw new GarminError(502); }
+  try { return format === "text" ? await response.text() : await response.json() as unknown; } catch { throw new GarminError(502); }
 }
 
 async function token(key: string): Promise<string> {
   if (cached?.key === key && cached.until > Date.now()) return cached.token;
   if (pending?.key === key) return pending.promise;
   const promise = (async () => {
-    const result = await request("/personalapitoken-service/personal-api/personal-api-key/token", `ApiKey ${key}`, "POST");
-    const payload = result as { access_token?: unknown; expires_in?: unknown } | null;
-    if (!payload || typeof payload.access_token !== "string" || !payload.access_token) throw new GarminError(502);
-    const seconds = typeof payload.expires_in === "number" && payload.expires_in > 0
-      ? Math.min(payload.expires_in, 86_400) : 86_400;
-    cached = { key, token: payload.access_token, until: Date.now() + Math.max(0, seconds - 60) * 1000 };
-    return payload.access_token;
+    // This endpoint returns a raw token as text/plain, not OAuth JSON. Asking
+    // for application/json returns HTTP 406 (verified against the live API).
+    const result = await request("/personalapitoken-service/personal-api/personal-api-key/token", `ApiKey ${key}`, "POST", "text");
+    const value = typeof result === "string" ? result.trim() : "";
+    if (!/^[A-Za-z0-9._~+\/-]+=*$/.test(value)) throw new GarminError(502);
+    cached = { key, token: value, until: Date.now() + (86_400 - 60) * 1000 };
+    return value;
   })();
   const current = { key, promise };
   pending = current;
