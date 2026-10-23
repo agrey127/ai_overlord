@@ -16,7 +16,7 @@ export default async function ManualFitnessPage() {
 
         <h1 style={{ margin: "12px 0 0 0" }}>Manual Fitness Entry</h1>
         <p className="card-muted" style={{ marginTop: 6 }}>
-          Home Assistant is offline, so this page lets you backfill the daily fitness row directly.
+          Enter daily fitness metrics manually when needed. Garmin syncing preserves manual entries.
         </p>
 
         <div

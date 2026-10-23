@@ -62,7 +62,19 @@ the existing catalog; operational timer cursors contain no workout payloads.
 timer runs it every 15 minutes, rechecks a seven-day overlap, and performs a full
 catch-up from the immutable cutoff at least daily for delayed uploads. Cursors
 advance only after a successful run. Host installation, state, and disabling the
-timer are documented in the Homelab service runbook. Strength sets and sending
+timer are documented in the Homelab service runbook.
+
+The same API-key worker refreshes daily steps, actual resting heart rate, and
+overall sleep score hourly into `fitness_daily`, using the app's local calendar
+for today and the preceding seven days. Missing readings never erase saved
+values. Manual/other-source entries and finalized rows are preserved. Updates
+to prior Garmin rows include ownership and version guards; insert races are
+skipped. The separate successful health cursor prevents unnecessary polling.
+This replaces the Home Assistant password-login feed; retirement and rollback
+instructions live in the Homelab runbook. Chief reads the existing daily table,
+including source and freshness, without authentication internals.
+
+Strength sets and sending
 plans to Garmin remain unsupported. Actual key
 activation and a live Garmin import must be verified separately from mocked
 API tests. Official reference:

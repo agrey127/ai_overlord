@@ -58,3 +58,16 @@ export async function fetchRuns(key: string, startDate: string, endDate: string)
   }
   throw new Error("Choose a shorter date range.");
 }
+
+export async function fetchDailyHealth(key: string, days: string[]) {
+  if (!days.length || days.length > 8 || days.some((day) => !/^\d{4}-\d{2}-\d{2}$/.test(day))) {
+    throw new Error("Choose up to eight health dates.");
+  }
+  const bearer = await token(key);
+  const [summaries, sleeps] = await Promise.all([
+    Promise.all(days.map((day) => request(`/usersummary-service/usersummary/daily?calendarDate=${day}`, `Bearer ${bearer}`))),
+    request(`/sleep-service/sleep/dailySleepSummariesByDate?startDate=${days[0]}&endDate=${days[days.length - 1]}`, `Bearer ${bearer}`),
+  ]);
+  if (!Array.isArray(sleeps)) throw new GarminError(502);
+  return { summaries, sleeps };
+}

@@ -16,7 +16,7 @@ export default async function GarminPage() {
     <main style={{ maxWidth: 980, margin: "0 auto", padding: "20px 16px 90px" }}>
       <Link href="/baseline/more">← Back to More</Link>
       <h1>Garmin Connect</h1>
-      <p className="card-muted">Import completed runs after your watch syncs with Garmin Connect.</p>
+      <p className="card-muted">Import completed runs after your watch syncs with Garmin Connect. The scheduled feed also refreshes sleep score, resting heart rate, and steps hourly.</p>
       <section className="card"><div className="card-inner">
         <h2 style={{ marginTop: 0 }}>Personal connection</h2>
         {configured ? <p>Personal access configured for your Baseline account. Preview runs to check the connection.</p> : <>

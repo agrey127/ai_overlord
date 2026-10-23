@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { synchronizeRuns } from "../lib/garmin/sync";
+import { healthDue, synchronizeHealth } from "../lib/garmin/health";
 
 async function main() {
   const env = process.env;
@@ -17,9 +18,12 @@ async function main() {
   const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, secret, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
-  const result = await synchronizeRuns(supabase, owner, key, cutoff, new Date().toISOString(),
+  const now = new Date().toISOString();
+  const result = await synchronizeRuns(supabase, owner, key, cutoff, now,
     options.get("--last-success"), options.get("--last-full"));
-  console.log(JSON.stringify(result));
+  const health = healthDue(options.get("--last-health"), now)
+    ? await synchronizeHealth(supabase, owner, key, now, env.APP_TIME_ZONE ?? "America/Indiana/Indianapolis") : null;
+  console.log(JSON.stringify({ ...result, health }));
 }
 
 const deadline = setTimeout(() => {
