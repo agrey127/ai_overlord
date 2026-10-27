@@ -53,11 +53,68 @@ export function normalizeHealth(days: string[], summaries: unknown[], sleeps: un
   });
 }
 
+// Store only explicit daily recovery fields, never raw payloads or identity data.
+export function normalizeRecovery(days: string[], summaries: unknown[], sleeps: unknown[], hrv: unknown[] = []) {
+  const result = new Map<string, Record<string, number | string>>();
+  const put = (day: unknown, fields: Record<string, number | string | null>) => {
+    if (!validDay(day) || !days.includes(day)) return;
+    result.set(day, { ...result.get(day), ...Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== null)) } as Record<string, number | string>);
+  };
+  const timestamp = (v: unknown) => {
+    // Garmin can serialize UTC epoch milliseconds or an ISO timestamp. Never infer a local offset.
+    const time = typeof v === "number" ? v : typeof v === "string" && /(?:Z|[+-]\d{2}:\d{2})$/.test(v) ? Date.parse(v) : NaN;
+    return Number.isFinite(time) && time > 946684800000 && time < 4102444800000 ? new Date(time).toISOString() : null;
+  };
+  for (const value of summaries) {
+    const r = object(value);
+    put(r.calendarDate, {
+      stress_average: integer(r.averageStressLevel, 0, 100),
+      body_battery_at_wake: integer(r.bodyBatteryAtWakeTime, 0, 100),
+      body_battery_high: integer(r.bodyBatteryHighestValue, 0, 100),
+      body_battery_low: integer(r.bodyBatteryLowestValue, 0, 100),
+      body_battery_charged: integer(r.bodyBatteryChargedValue, 0, 200),
+      body_battery_drained: integer(r.bodyBatteryDrainedValue, 0, 200),
+    });
+  }
+  const seen = new Set<string>();
+  for (const value of sleeps) {
+    const r = object(value);
+    if (validDay(r.calendarDate) && days.includes(r.calendarDate)) {
+      if (seen.has(r.calendarDate)) throw new Error("Duplicate sleep recovery dates.");
+      seen.add(r.calendarDate);
+    }
+    const start = timestamp(r.sleepStartTimestampGMT), end = timestamp(r.sleepEndTimestampGMT);
+    const validWindow = start && end && end > start && Date.parse(end) - Date.parse(start) <= 86400000;
+    put(r.calendarDate, {
+      sleep_seconds: integer(r.sleepTimeSeconds, 1, 86400),
+      sleep_start_at: validWindow ? start : null, sleep_end_at: validWindow ? end : null,
+      sleep_awake_seconds: integer(r.awakeSleepSeconds, 0, 86400),
+      sleep_awake_count: integer(r.awakeCount, 0, 1000),
+    });
+  }
+  const seenHrv = new Set<string>();
+  for (const value of hrv) {
+    const r = object(value), baseline = object(r.baseline);
+    if (validDay(r.calendarDate) && days.includes(r.calendarDate)) {
+      if (seenHrv.has(r.calendarDate)) throw new Error("Duplicate HRV dates.");
+      seenHrv.add(r.calendarDate);
+    }
+    const status = typeof r.status === "string" && ["POOR", "LOW", "UNBALANCED", "BALANCED"].includes(r.status) ? r.status : null;
+    if (r.status === "INVALID") continue;
+    put(r.calendarDate, {
+      hrv_overnight_ms: integer(r.lastNightAvg, 1, 1000), hrv_weekly_ms: integer(r.weeklyAvg, 1, 1000),
+      hrv_baseline_low_ms: integer(baseline.balancedLow, 1, 1000), hrv_baseline_high_ms: integer(baseline.balancedUpper, 1, 1000), hrv_status: status,
+    });
+  }
+  return result;
+}
+
 export async function synchronizeHealth(supabase: SupabaseClient, owner: string, key: string, now: string, timeZone: string) {
   if (!owner || !key) throw new Error("Garmin health sync is not configured.");
   const days = healthDays(now, timeZone);
   const raw = await fetchDailyHealth(key, days);
-  const readings = normalizeHealth(days, raw.summaries, raw.sleeps);
+  const recovery = normalizeRecovery(days, raw.summaries, raw.sleeps, raw.hrv);
+  const readings = normalizeHealth(days, raw.summaries, raw.sleeps).map(row => ({ ...row, ...recovery.get(row.day) }));
   const { data, error } = await supabase.from("fitness_daily")
     .select("day,steps,sleep_score,resting_heart_rate,source,is_final,updated_at")
     .eq("user_id", owner).gte("day", days[0]).lte("day", days[days.length - 1]);

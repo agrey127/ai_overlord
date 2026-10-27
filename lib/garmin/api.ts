@@ -64,10 +64,13 @@ export async function fetchDailyHealth(key: string, days: string[]) {
     throw new Error("Choose up to eight health dates.");
   }
   const bearer = await token(key);
-  const [summaries, sleeps] = await Promise.all([
+  const [summaries, sleeps, hrv] = await Promise.all([
     Promise.all(days.map((day) => request(`/usersummary-service/usersummary/daily?calendarDate=${day}`, `Bearer ${bearer}`))),
     request(`/sleep-service/sleep/dailySleepSummariesByDate?startDate=${days[0]}&endDate=${days[days.length - 1]}`, `Bearer ${bearer}`),
+    request(`/hrv-service/hrv/daily/${days[0]}/${days[days.length - 1]}`, `Bearer ${bearer}`),
   ]);
   if (!Array.isArray(sleeps)) throw new GarminError(502);
-  return { summaries, sleeps };
+  const hrvRows = hrv && typeof hrv === "object" && "hrvSummaries" in hrv ? (hrv as { hrvSummaries: unknown }).hrvSummaries : null;
+  if (!Array.isArray(hrvRows)) throw new GarminError(502);
+  return { summaries, sleeps, hrv: hrvRows };
 }

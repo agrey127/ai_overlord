@@ -161,7 +161,7 @@ export async function getRunningCoachContext(supabase: SupabaseClient, userId: s
       .gte("activity_date", addDays(today, -83)).lte("activity_date", today)
       .order("activity_date", { ascending: false }).order("id", { ascending: false }).limit(200),
     supabase.from("fitness_daily")
-      .select("day,sleep_score,resting_heart_rate,steps,updated_at,is_final")
+      .select("day,sleep_score,resting_heart_rate,steps,sleep_seconds,sleep_start_at,sleep_end_at,sleep_awake_seconds,sleep_awake_count,hrv_overnight_ms,hrv_weekly_ms,hrv_baseline_low_ms,hrv_baseline_high_ms,hrv_status,stress_average,body_battery_at_wake,body_battery_high,body_battery_low,body_battery_charged,body_battery_drained,source,captured_at,updated_at,is_final")
       .eq("user_id", userId).gte("day", addDays(today, -13)).lte("day", today)
       .order("day", { ascending: false }),
     supabase.from("running_races")

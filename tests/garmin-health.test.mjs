@@ -98,11 +98,29 @@ test("daily health API uses official endpoints and shares a single plain-text to
   const client = load("lib/garmin/api.ts", {}, async (url, options) => {
     requests.push({ url, options });
     if (url.includes("personal-api-key/token")) return new Response("mock-token");
+    if (url.includes("/hrv/daily/")) return Response.json({ hrvSummaries: [] });
     if (url.includes("dailySleepSummariesByDate")) return Response.json([]);
     return Response.json({ calendarDate: new URL(url).searchParams.get("calendarDate") });
   });
   const response = await client.fetchDailyHealth("mock-key", ["2026-10-22", "2026-10-23"]);
   assert.equal(response.summaries.length, 2);
   assert.equal(requests.filter((x) => x.options.method === "POST").length, 1);
-  assert.equal(requests.filter((x) => x.options.headers.Authorization === "Bearer mock-token").length, 3);
+  assert.equal(requests.filter((x) => x.options.headers.Authorization === "Bearer mock-token").length, 4);
+});
+
+
+test("recovery summaries project only valid daily metrics and explicit UTC windows", () => {
+  const days = ["2026-10-26"];
+  const result = health.normalizeRecovery(days,
+    [{calendarDate:days[0],averageStressLevel:-1,bodyBatteryAtWakeTime:80,bodyBatteryLowestValue:0,privateKey:"hidden"}],
+    [{calendarDate:days[0],sleepTimeSeconds:27000,sleepStartTimestampGMT:1792962000000,sleepEndTimestampGMT:1792989000000,awakeCount:2}],
+    [{calendarDate:days[0],lastNightAvg:45,weeklyAvg:46,status:"BALANCED",baseline:{balancedLow:40,balancedUpper:60}}]).get(days[0]);
+  assert.equal(result.sleep_seconds,27000); assert.equal(result.hrv_overnight_ms,45);
+  assert.equal(result.hrv_baseline_low_ms,40); assert.equal(result.body_battery_low,0);
+  assert.ok(result.sleep_start_at.endsWith("Z")); assert.equal(result.sleep_awake_count,2);
+  assert.ok(!("stress_average" in result)); assert.ok(!("privateKey" in result));
+  const missing = health.normalizeRecovery(days,[],[{calendarDate:days[0],sleepTimeSeconds:0,sleepStartTimestampGMT:"2026-10-26T01:00:00",sleepEndTimestampGMT:"2026-10-26T09:00:00"}],
+    [{calendarDate:days[0],status:"INVALID",lastNightAvg:50}]).get(days[0]);
+  assert.deepEqual(missing,{});
+  assert.throws(()=>health.normalizeRecovery(days,[],[],[{calendarDate:days[0]},{calendarDate:days[0]}]), /Duplicate HRV/);
 });
