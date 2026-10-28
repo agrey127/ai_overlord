@@ -166,6 +166,7 @@ export default async function FitnessPage() {
         </p>
       </header>
 
+      <Link href="/baseline/fitness/recovery" style={{display:"block",padding:"18px 20px",marginBottom:18,border:"1px solid #78559a",borderRadius:14,background:"#271d36",color:"#eddcff",textDecoration:"none"}}><strong>Explore your recovery</strong><span style={{display:"block",marginTop:5,fontSize:14,color:"#c6b5db"}}>Sleep, HRV, Body Battery and stress — your daily story and trends.</span></Link>
       <FitnessUpcoming />
 
       <section

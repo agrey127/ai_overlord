@@ -9,6 +9,7 @@ type Module = {
 };
 
 const modules: Module[] = [
+  { title: "Recovery", description: "Your sleep, HRV, Body Battery and stress in context.", href: "/baseline/fitness/recovery", accent: true },
   {
     title: "Garmin Connect",
     description: "Review and import completed runs from your Garmin account.",

@@ -154,3 +154,13 @@ sleep seconds (excluding naps), confirmed UTC sleep timing and awakenings, avera
 stress, and Body Battery at wake/high/low/charged/drained. Nullable fields preserve
 missingness. Existing ownership policies and manual/final-row guards apply. Chief
 and Running can read the summaries as context; readiness scoring is unchanged.
+
+## Recovery dashboard
+
+Fitness → Explore your recovery (also under More) opens the authenticated,
+read-only `/baseline/fitness/recovery` screen. It reads the owner's saved daily
+health rows using the signed-in Supabase client and existing RLS. It offers a
+28-day explorer, 7/28-day charts with missing-date gaps, sleep comparison with
+at least three recorded previous nights within seven days, and explicit source,
+update time and timezone. HRV overnight comparisons are distinguished from
+Garmin's weekly status. No new score, AI API, schema change or record write.
